@@ -27,7 +27,8 @@ export async function POST(request: Request) {
   let code = "";
   try {
     const body = (await request.json()) as { code?: unknown };
-    if (typeof body.code === "string") code = body.code;
+    // Generated codes have no surrounding spaces; a copied one can pick some up.
+    if (typeof body.code === "string") code = body.code.trim();
   } catch {
     /* fall through to the generic failure */
   }

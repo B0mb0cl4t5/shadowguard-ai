@@ -25,7 +25,9 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 export async function verifyPassword(candidate: string, stored: string | undefined): Promise<boolean> {
   if (!stored) return false;
-  const parts = stored.split(":");
+  // A hash contains no whitespace, but one copied from a terminal can pick up
+  // the script's indentation or a line wrap.
+  const parts = stored.replace(/\s+/g, "").split(":");
   if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") return false;
   const iterations = Number(parts[1]);
   if (!Number.isInteger(iterations) || iterations < MIN_ITERATIONS || iterations > 5_000_000) return false;
