@@ -112,15 +112,15 @@ cp backend/.env.example backend/.env    # paste DATABASE_URL and the three diges
 
 # 4. Frontend secrets
 cd frontend
-npm run hash-password -- --generate    # admin access code + hash
-npm run hash-password -- --generate    # viewer access code + hash
+npm run hash-password                  # choose the admin password, get its hash
+npm run hash-password                  # choose the viewer password, get its hash
 npm run gen-secret                     # SESSION_SECRET
 cp .env.example .env.local             # paste the raw viewer/admin keys, both hashes, the secret
 cd ..
 
 # 5. Run (two terminals)
 npm run dev:backend      # http://127.0.0.1:8000/api/health
-npm run dev:frontend     # http://localhost:3000  → sign in with the admin access code
+npm run dev:frontend     # http://localhost:3000  → sign in as admin with the admin password
 ```
 
 To run the project the way Vercel routes it, use `vercel dev` from the repo root. It starts both services and injects the binding. Add `--local` to skip signing in to Vercel, and export the environment variables in your shell, because local mode does not pull them from a Vercel project.

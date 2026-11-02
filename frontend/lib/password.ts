@@ -1,11 +1,13 @@
 /**
- * Access-code verification with PBKDF2-SHA256 (Web Crypto).
+ * Password verification with PBKDF2-SHA256 (Web Crypto).
  *
- * OWASP A02 / A07: codes are never stored in plain text. The environment holds
+ * OWASP A02 / A07: passwords are never stored in plain text. The environment holds
  * `pbkdf2_sha256:<iterations>:<salt b64>:<hash b64>`, generated with
  * `npm run hash-password`. Colons, not `$`, separate the parts because Next.js
  * expands `$NAME` sequences inside .env files. Comparison is constant-time.
  */
+
+import type { Role } from "./types";
 
 const MIN_ITERATIONS = 100_000;
 
@@ -52,4 +54,24 @@ export async function verifyPassword(candidate: string, stored: string | undefin
     expected.length * 8,
   );
   return constantTimeEqual(new Uint8Array(bits), expected);
+}
+
+function usernameFor(configured: string | undefined, fallback: string): string {
+  return (configured || fallback).trim().toLowerCase();
+}
+
+/**
+ * The role these credentials sign in as, or null. Both password hashes are
+ * always checked first, so timing reveals neither which account a near-miss
+ * belonged to nor whether the username exists.
+ */
+export async function roleForCredentials(username: string, password: string): Promise<Role | null> {
+  const [adminPassword, viewerPassword] = await Promise.all([
+    verifyPassword(password, process.env.DASHBOARD_ADMIN_CODE_HASH),
+    verifyPassword(password, process.env.DASHBOARD_VIEWER_CODE_HASH),
+  ]);
+  const name = username.trim().toLowerCase();
+  if (adminPassword && name === usernameFor(process.env.DASHBOARD_ADMIN_USERNAME, "admin")) return "admin";
+  if (viewerPassword && name === usernameFor(process.env.DASHBOARD_VIEWER_USERNAME, "viewer")) return "viewer";
+  return null;
 }

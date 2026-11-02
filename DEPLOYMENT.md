@@ -56,10 +56,10 @@ python backend/scripts/create_api_key.py viewer
 python backend/scripts/create_api_key.py ingest
 python backend/scripts/create_api_key.py admin
 
-# Dashboard access codes and the session secret
+# Dashboard passwords and the session secret
 cd frontend && npm install
-npm run hash-password -- --generate     # admin code + hash
-npm run hash-password -- --generate     # viewer code + hash
+npm run hash-password                   # choose the admin password, get its hash (12+ characters)
+npm run hash-password                   # choose the viewer password, get its hash
 npm run gen-secret                      # SESSION_SECRET
 ```
 
@@ -70,8 +70,10 @@ Who gets what:
 | The three `role:digest` lines | `SHADOWGUARD_API_KEYS` (comma-separated) |
 | Raw viewer key, raw admin key | `SHADOWGUARD_VIEWER_API_KEY`, `SHADOWGUARD_ADMIN_API_KEY` |
 | Raw ingest key | Whatever pushes telemetry (`simulate_live.py`, a log shipper), not the Vercel project |
-| Access-code **hashes** + `SESSION_SECRET` | `DASHBOARD_ADMIN_CODE_HASH`, `DASHBOARD_VIEWER_CODE_HASH`, `SESSION_SECRET` |
-| The access codes themselves | The people who sign in, shared privately |
+| Password **hashes** + `SESSION_SECRET` | `DASHBOARD_ADMIN_CODE_HASH`, `DASHBOARD_VIEWER_CODE_HASH`, `SESSION_SECRET` |
+| The passwords themselves | The people who sign in, shared privately |
+
+The usernames are `admin` and `viewer` unless you set `DASHBOARD_ADMIN_USERNAME` or `DASHBOARD_VIEWER_USERNAME`.
 
 ---
 
@@ -92,13 +94,14 @@ Who gets what:
    | `SHADOWGUARD_ADMIN_API_KEY` | raw admin key |
    | `DASHBOARD_ADMIN_CODE_HASH` | `pbkdf2_sha256:600000:…` |
    | `DASHBOARD_VIEWER_CODE_HASH` | `pbkdf2_sha256:600000:…` |
+   | `DASHBOARD_ADMIN_USERNAME`, `DASHBOARD_VIEWER_USERNAME` | optional; default to `admin` and `viewer` |
    | `SESSION_SECRET` | output of `npm run gen-secret` |
    | `TEAMS_WEBHOOK_URL` | optional |
    | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
 
    Do **not** set `SHADOWGUARD_API_URL`. The service binding generates it.
 
-5. **Deploy**, open the URL, sign in with the admin access code.
+5. **Deploy**, open the URL, sign in as `admin` with the admin password.
 6. Check the routing:
    ```bash
    curl -i https://YOUR-PROJECT.vercel.app/api/health            # 401 "Not signed in": the backend is not public here
@@ -148,7 +151,7 @@ To reset the demo before going on stage, re-run `python backend/scripts/init_db.
 | Dashboard says "Can't reach the risk engine" | `SHADOWGUARD_API_URL` set by hand and overriding the binding, or the binding in `vercel.json` removed. A non-local `http://` URL is refused by design |
 | Backend returns 503 "Service not configured" | `SHADOWGUARD_API_KEYS` empty or malformed, or `DATABASE_URL` missing `sslmode=require` |
 | Sign-in says "Sign-in is not configured" | `SESSION_SECRET` missing or shorter than 32 characters |
-| Correct access code rejected | Hash pasted with a stray space or quote; regenerate with `npm run hash-password` |
+| Correct username and password rejected | Hash not set for this environment, no redeploy since changing it, or a stray quote in the value; regenerate with `npm run hash-password` |
 | 429 on sign-in | The brute-force limiter (5 per minute per IP). Wait a minute |
 | Build ignores the services or the Python function fails to import | The project's Root Directory must be the repo root and its Framework Preset must be Services |
 | `simulate_live.py` gets a 401 or HTML from a preview URL | Deployment Protection applies to the public path; use the production URL or a protection bypass |

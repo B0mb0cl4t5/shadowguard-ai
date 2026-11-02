@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react";
 
 export function LoginForm({ next }: { next: string }) {
-  const [code, setCode] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -15,7 +16,7 @@ export function LoginForm({ next }: { next: string }) {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ username, password }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -24,7 +25,7 @@ export function LoginForm({ next }: { next: string }) {
       window.location.assign(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
-      setCode("");
+      setPassword("");
     } finally {
       setBusy(false);
     }
@@ -33,19 +34,37 @@ export function LoginForm({ next }: { next: string }) {
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <div>
-        <label htmlFor="code" className="eyebrow mb-2 block">
-          Access code
+        <label htmlFor="username" className="eyebrow mb-2 block">
+          Username
         </label>
         <input
-          id="code"
-          name="code"
+          id="username"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+          maxLength={64}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-[16px] text-white placeholder-slate-500 transition-colors focus:border-signal/60 sm:text-sm"
+        />
+      </div>
+      <div>
+        <label htmlFor="password" className="eyebrow mb-2 block">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
           type="password"
           autoComplete="current-password"
           required
           minLength={8}
           maxLength={128}
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-[16px] text-white placeholder-slate-500 transition-colors focus:border-signal/60 sm:text-sm"
           placeholder="••••••••••••"
         />
@@ -55,7 +74,7 @@ export function LoginForm({ next }: { next: string }) {
           {error}
         </p>
       )}
-      <button type="submit" className="btn-signal h-11 w-full" disabled={busy || code.length < 8}>
+      <button type="submit" className="btn-signal h-11 w-full" disabled={busy || !username.trim() || password.length < 8}>
         {busy ? "Signing in…" : "Sign in"}
       </button>
     </form>

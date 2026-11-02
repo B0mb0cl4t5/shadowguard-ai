@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { verifyPassword } from "@/lib/password";
+import { roleForCredentials } from "@/lib/password";
 import { allow } from "@/lib/rate-limit";
 import { clientIp, isSameOrigin } from "@/lib/request-guard";
 import { createSessionToken, SESSION_TTL_SECONDS, sessionCookieName } from "@/lib/session";
@@ -9,10 +9,10 @@ import type { Role } from "@/lib/types";
 export const runtime = "nodejs";
 
 /**
- * Sign-in with an access code. OWASP A07:
+ * Sign-in with a username and password. OWASP A07:
  *   - 5 attempts per minute and 30 per hour per client IP.
  *   - Both role hashes are always checked, so timing does not reveal which
- *     role a near-miss belonged to.
+ *     role a near-miss belonged to or whether the username exists.
  *   - The same generic error for every failure.
  */
 export async function POST(request: Request) {
@@ -24,27 +24,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Too many attempts. Try again shortly." }, { status: 429 });
   }
 
-  let code = "";
+  let username = "";
+  let password = "";
   try {
-    const body = (await request.json()) as { code?: unknown };
-    // Generated codes have no surrounding spaces; a copied one can pick some up.
-    if (typeof body.code === "string") code = body.code.trim();
+    const body = (await request.json()) as { username?: unknown; password?: unknown };
+    if (typeof body.username === "string") username = body.username;
+    // hash-password trims what it hashes, and a copied password can pick up spaces.
+    if (typeof body.password === "string") password = body.password.trim();
   } catch {
     /* fall through to the generic failure */
   }
-  if (code.length < 8 || code.length > 128) {
+  if (!username || username.length > 64 || password.length < 8 || password.length > 128) {
     console.warn(`[auth] failed sign-in from ${ip}`);
-    return NextResponse.json({ detail: "Invalid access code" }, { status: 401 });
+    return NextResponse.json({ detail: "Invalid username or password" }, { status: 401 });
   }
 
-  const [isAdmin, isViewer] = await Promise.all([
-    verifyPassword(code, process.env.DASHBOARD_ADMIN_CODE_HASH),
-    verifyPassword(code, process.env.DASHBOARD_VIEWER_CODE_HASH),
-  ]);
-  const role: Role | null = isAdmin ? "admin" : isViewer ? "viewer" : null;
+  const role: Role | null = await roleForCredentials(username, password);
   if (!role) {
     console.warn(`[auth] failed sign-in from ${ip}`);
-    return NextResponse.json({ detail: "Invalid access code" }, { status: 401 });
+    return NextResponse.json({ detail: "Invalid username or password" }, { status: 401 });
   }
 
   const token = await createSessionToken(role);

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Hash a dashboard access code for DASHBOARD_ADMIN_CODE_HASH / DASHBOARD_VIEWER_CODE_HASH.
+ * Hash a dashboard password for DASHBOARD_ADMIN_CODE_HASH / DASHBOARD_VIEWER_CODE_HASH.
  *
  *   npm run hash-password            # prompts, input hidden
- *   npm run hash-password -- --generate   # creates a strong random code and its hash
+ *   npm run hash-password -- --generate   # creates a strong random password and its hash
  *
  * Output format: pbkdf2_sha256:<iterations>:<salt b64>:<hash b64>
  */
@@ -23,7 +23,7 @@ function done(code, generated) {
     console.error("Use at least 12 characters.");
     process.exit(1);
   }
-  if (generated) console.log(`\nAccess code (share privately, shown once):\n  ${code}`);
+  if (generated) console.log(`\nPassword (share privately, shown once):\n  ${code}`);
   console.log(`\nHash for the environment variable:\n  ${hash(code)}\n`);
 }
 
@@ -32,9 +32,9 @@ if (process.argv.includes("--generate")) {
 } else {
   const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
   rl._writeToOutput = (s) => {
-    if (s.includes("Access code")) process.stdout.write(s);
+    if (s.includes("Password to hash")) process.stdout.write(s);
   };
-  rl.question("Access code to hash: ", (code) => {
+  rl.question("Password to hash: ", (code) => {
     rl.close();
     process.stdout.write("\n");
     done(code.trim(), false);

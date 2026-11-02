@@ -17,7 +17,7 @@ ShadowGuard is a security product, so every control below is implemented in code
 
 - [x] **TLS to the database is mandatory** for any non-local host, including hosts named in `?host=` or `?hostaddr=`; `sslmode=disable` or no `sslmode` is refused. `backend/shadowguard/db.py`. Tests: `test_remote_database_requires_tls`, `test_host_overrides_cannot_skip_database_tls`.
 - [x] **API keys stored as SHA-256 digests only**; malformed entries are ignored rather than trusted. Keys are 256-bit random (`create_api_key.py`). Comparison uses `hmac.compare_digest` across all entries. Test: `test_api_key_config_only_accepts_sha256_digests`.
-- [x] **Access codes hashed with PBKDF2-HMAC-SHA256, 600,000 iterations**, random 16-byte salt, constant-time compare. `frontend/lib/password.ts`.
+- [x] **Passwords hashed with PBKDF2-HMAC-SHA256, 600,000 iterations**, random 16-byte salt, constant-time compare. `frontend/lib/password.ts`.
 - [x] **Session cookie:** `HttpOnly`, `Secure`, `SameSite=Strict`, `__Host-` prefix in production, 8-hour expiry.
 - [x] **No secrets in the browser.** Backend keys are server-only env vars, and `lib/backend.ts` imports `server-only` so the build fails if it is ever pulled into client code.
 - [x] **No keys over plaintext.** The frontend refuses an `http://` backend URL unless it is localhost; the live simulator refuses to send a key over `http://` to a remote host (test: `test_simulator_refuses_plain_http_to_remote_hosts`); the Teams webhook must be `https://`.
@@ -67,7 +67,7 @@ ShadowGuard is a security product, so every control below is implemented in code
 ## A07 · Identification and Authentication Failures
 
 - [x] Sign-in rate limit: 5 per minute and 30 per hour per IP. The backend limits requests per IP and per valid key, and after 20 failed API-key attempts in a minute it refuses that IP. Test: `test_repeated_auth_failures_lock_out_that_ip_only`.
-- [x] Same generic error for every sign-in failure; both role hashes are always checked so timing does not reveal which role a near-miss matched.
+- [x] Same generic error for every sign-in failure; both role hashes are always checked so timing does not reveal which role a near-miss matched or whether a username exists. Test: `frontend/lib/password.test.mjs`.
 - [x] Session expiry enforced from inside the signed payload; `SESSION_SECRET` rotation signs everyone out.
 
 ## A08 · Software and Data Integrity Failures
@@ -95,7 +95,7 @@ ShadowGuard is a security product, so every control below is implemented in code
 - **Services share one project's environment variables.** With both services in one Vercel project, `DATABASE_URL` is set alongside the raw viewer and admin keys and the session secret, so a compromise of either service's server code could read all of them. Browsers still see none of them. Use separate projects if you need that separation.
 - **Rate limits are per serverless instance.** Vercel can run several warm instances, so the limits are not global. Back `lib/rate-limit.ts` and `security.SlidingWindowLimiter` with Upstash Redis / Vercel KV for a hard global limit.
 - **DNS rebinding in the fetcher.** There is a small window between the address check and the HTTP client's own resolution. Route the fetcher through an egress proxy that enforces the same allow-list for production use.
-- **Shared access codes, not individual accounts.** Two codes (admin, viewer) are fine for a demo; production should use the university's SSO (OIDC / Microsoft Entra ID) so decisions are attributable to a named person.
+- **Two shared logins, not individual accounts.** One admin and one viewer login are fine for a demo; production should use the university's SSO (OIDC / Microsoft Entra ID) so decisions are attributable to a named person.
 - **`style-src 'unsafe-inline'`.** Needed for React style attributes; scripts remain nonce-locked.
 
 ## Reporting a vulnerability
