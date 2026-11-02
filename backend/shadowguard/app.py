@@ -1,0 +1,215 @@
+"""ShadowGuard AI — FastAPI application.
+
+Route → role matrix (OWASP A01, Broken Access Control):
+
+    GET  /api/health                              public (no data, no DB detail)
+    GET  /api/v1/dashboard                        viewer, admin
+    GET  /api/v1/apps                             viewer, admin
+    GET  /api/v1/vendors/{id}                     viewer, admin
+    POST /api/v1/telemetry                        ingest, admin
+    POST /api/v1/vendors/{id}/analyze             admin  (persist=false → dry run, no writes)
+    POST /api/v1/remediations/{id}/decision       admin
+    POST /api/v1/pipeline/recompute               admin
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+from . import __version__, service
+from . import repository as repo
+from .config import get_settings
+from .db import DatabaseNotConfigured, get_connection
+from .fetcher import FetchError, UnsafeURLError, fetch_policy_text
+from .models import AnalyseRequest, DecisionRequest, Severity, SortKey, TelemetryBatch
+from .security import SECURITY_HEADERS, Principal, require_role
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+log = logging.getLogger("shadowguard.api")
+
+settings = get_settings()
+
+# OWASP A05: interactive docs expose the whole attack surface; off unless asked for.
+app = FastAPI(
+    title="ShadowGuard AI API",
+    version=__version__,
+    docs_url="/api/docs" if settings.enable_docs else None,
+    redoc_url=None,
+    openapi_url="/api/openapi.json" if settings.enable_docs else None,
+)
+
+if settings.allowed_origins:
+    # The dashboard calls this API server-to-server, so CORS is off by default.
+    # Only explicit https origins from ALLOWED_ORIGINS are ever allowed.
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.allowed_origins),
+        allow_methods=["GET", "POST"],
+        allow_headers=["X-API-Key", "Content-Type"],
+        allow_credentials=False,
+        max_age=600,
+    )
+
+MAX_BODY_BYTES = 1_000_000  # 1 MB; the largest legitimate body is a 200k-char policy
+
+
+@app.middleware("http")
+async def hardening(request: Request, call_next):
+    request_id = uuid.uuid4().hex[:16]
+    request.state.request_id = request_id
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            too_big = int(declared) > MAX_BODY_BYTES
+        except ValueError:
+            return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+        if too_big:
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+    elif request.method == "POST" and request.headers.get("transfer-encoding", "").lower() == "chunked":
+        # Refuse unbounded streamed bodies; legitimate clients send a length.
+        return JSONResponse({"detail": "Content-Length required"}, status_code=411)
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    # Return field locations and messages, but never echo the submitted values
+    # back (avoids reflecting attacker-controlled input).
+    errors = [{"loc": e.get("loc"), "msg": e.get("msg")} for e in exc.errors()][:20]
+    return JSONResponse({"detail": "Validation failed", "errors": jsonable_encoder(errors)}, status_code=422)
+
+
+@app.exception_handler(DatabaseNotConfigured)
+async def db_not_configured(request: Request, exc: DatabaseNotConfigured):
+    log.error("Database configuration error: %s", exc)
+    return JSONResponse({"detail": "Service not configured"}, status_code=503)
+
+
+@app.exception_handler(Exception)
+async def unhandled(request: Request, exc: Exception):
+    # OWASP A05/A09: log the full error server-side, return nothing internal.
+    request_id = getattr(request.state, "request_id", "unknown")
+    log.exception("Unhandled error (request %s)", request_id)
+    return JSONResponse({"detail": "Internal error", "request_id": request_id}, status_code=500)
+
+
+Id = Annotated[int, Path(ge=1, le=2_147_483_647)]
+viewer = require_role("viewer", "admin")
+ingestor = require_role("ingest", "admin")
+admin = require_role("admin")
+
+
+@app.get("/api/health")
+def health() -> dict:
+    return {"status": "ok", "version": __version__}
+
+
+@app.get("/api/v1/dashboard")
+def get_dashboard(_: Principal = Depends(viewer)):
+    with get_connection() as conn:
+        return service.dashboard(conn)
+
+
+@app.get("/api/v1/apps")
+def list_apps(
+    _: Principal = Depends(viewer),
+    severity: Severity | None = None,
+    sort: SortKey = "exposure",
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+):
+    with get_connection() as conn:
+        return {"apps": repo.shadow_apps(conn, severity=severity, sort=sort, limit=limit)}
+
+
+@app.get("/api/v1/vendors/{vendor_id}")
+def get_vendor(vendor_id: Id, _: Principal = Depends(viewer)):
+    with get_connection() as conn:
+        try:
+            detail = service.vendor_detail(conn, vendor_id)
+        except service.NotFound:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Vendor not found") from None
+    detail.pop("policy_text", None)
+    return detail
+
+
+@app.post("/api/v1/telemetry", status_code=status.HTTP_202_ACCEPTED)
+def ingest(batch: TelemetryBatch, principal: Principal = Depends(ingestor)):
+    with get_connection() as conn:
+        result = service.ingest_telemetry(conn, batch.events)
+        repo.audit(conn, principal.role, principal.key_fingerprint, "telemetry.ingest", "telemetry_events",
+                   {"accepted": result["accepted"], "pairs": result["pairs_rescored"]})
+        return result
+
+
+@app.post("/api/v1/vendors/{vendor_id}/analyze")
+def analyse(vendor_id: Id, body: AnalyseRequest, principal: Principal = Depends(admin)):
+    with get_connection() as conn:
+        try:
+            policy_url, stored_text = service.vendor_policy_source(conn, vendor_id)
+        except service.NotFound:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Vendor not found") from None
+
+    if body.policy_text:
+        text, source = body.policy_text, "submitted"
+    elif body.fetch:
+        if not policy_url:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vendor has no policy URL")
+        try:
+            # Fetched outside any DB transaction so a slow site cannot hold a connection.
+            text, source = fetch_policy_text(policy_url), "fetched"
+        except UnsafeURLError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Policy URL failed the SSRF safety check") from None
+        except FetchError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not fetch policy: {exc}") from None
+    elif stored_text:
+        text, source = stored_text, "stored"
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No policy text available; submit policy_text")
+
+    with get_connection() as conn:
+        if body.persist:
+            result = service.analyse_vendor(conn, vendor_id, text)
+        else:
+            result = service.preview_policy(conn, vendor_id, text)
+        repo.audit(conn, principal.role, principal.key_fingerprint,
+                   "vendor.analyse" if body.persist else "vendor.analyse.dry_run", f"vendor:{vendor_id}",
+                   {"source": source, "posture": result["posture_score"],
+                    "injection_flags": len(result["injection_flags"])})
+    result["source"] = source
+    return result
+
+
+@app.post("/api/v1/remediations/{action_id}/decision")
+def decide(action_id: Id, body: DecisionRequest, principal: Principal = Depends(admin)):
+    actor = f"admin:{principal.key_fingerprint[:8]}"
+    with get_connection() as conn:
+        try:
+            result = service.decide_remediation(conn, action_id, body.decision, actor, body.note)
+        except service.NotFound:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Remediation action not found") from None
+        except service.Conflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+        repo.audit(conn, principal.role, principal.key_fingerprint, f"remediation.{body.decision}",
+                   f"remediation:{action_id}", {"note_len": len(body.note)})
+        return result
+
+
+@app.post("/api/v1/pipeline/recompute")
+def recompute(principal: Principal = Depends(admin)):
+    with get_connection() as conn:
+        result = service.recompute_all(conn)
+        repo.audit(conn, principal.role, principal.key_fingerprint, "pipeline.recompute", "all", result)
+        return result

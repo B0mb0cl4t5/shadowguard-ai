@@ -1,0 +1,3 @@
+# Convenience pointer for tools that look for requirements.txt at the repo root.
+# The Vercel backend project uses backend/requirements.txt directly.
+-r backend/requirements.txt

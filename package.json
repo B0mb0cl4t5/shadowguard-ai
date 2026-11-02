@@ -1,0 +1,25 @@
+{
+  "name": "shadowguard-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shadow AI & SaaS data-exposure governance pipeline for universities (Next.js dashboard + Python risk engine).",
+  "scripts": {
+    "install:frontend": "npm --prefix frontend install",
+    "install:backend": "pip install -r backend/requirements-dev.txt",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "cd backend && python -m uvicorn api.index:app --reload --port 8000 --env-file .env",
+    "build": "npm --prefix frontend run build",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "test": "cd backend && python -m pytest",
+    "db:init": "python backend/scripts/init_db.py",
+    "db:seed:rebuild": "python backend/scripts/build_seed.py",
+    "keys:viewer": "python backend/scripts/create_api_key.py viewer",
+    "keys:ingest": "python backend/scripts/create_api_key.py ingest",
+    "keys:admin": "python backend/scripts/create_api_key.py admin",
+    "demo:live": "python backend/scripts/simulate_live.py",
+    "audit": "npm --prefix frontend audit --omit=dev && pip-audit -r backend/requirements.txt"
+  },
+  "engines": {
+    "node": ">=20.9"
+  }
+}
