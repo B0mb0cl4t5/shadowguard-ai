@@ -67,6 +67,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Vercel Services reject Edge Function output, and Edge is the default for middleware.
+  runtime: "nodejs",
   // Everything except static assets and the public PWA files is gated.
   matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|robots.txt).*)"],
 };

@@ -1,8 +1,8 @@
 /**
  * Stateless signed session tokens (HMAC-SHA256 via Web Crypto).
  *
- * Runs in both the Edge runtime (middleware) and Node (route handlers), so it
- * only uses `globalThis.crypto.subtle`.
+ * Shared by middleware and route handlers. It only uses `globalThis.crypto.subtle`,
+ * so it does not depend on which runtime either of them uses.
  *
  * OWASP A02 Cryptographic Failures:
  *   - HMAC-SHA256 with a server-only secret of at least 32 characters.
