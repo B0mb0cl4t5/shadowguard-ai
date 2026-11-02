@@ -35,6 +35,8 @@ log = logging.getLogger("shadowguard.security")
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+AUTH_FAILURES_PER_MINUTE = 20
+
 
 @dataclass(frozen=True)
 class Principal:
@@ -70,6 +72,17 @@ class SlidingWindowLimiter:
         self._hits: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
 
+    def exhausted(self, bucket: str, limit: int, window_seconds: float = 60.0) -> bool:
+        """True when ``bucket`` is full. Unlike ``allow``, this records no hit."""
+        now = time.monotonic()
+        with self._lock:
+            q = self._hits.get(bucket)
+            if q is None:
+                return False
+            while q and now - q[0] > window_seconds:
+                q.popleft()
+            return len(q) >= limit
+
     def allow(self, bucket: str, limit: int, window_seconds: float = 60.0) -> bool:
         now = time.monotonic()
         with self._lock:
@@ -96,6 +109,13 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _rejected_key(request: Request, ip: str) -> HTTPException:
+    log.warning("Rejected API key from %s on %s", ip, request.url.path)
+    limiter.allow(f"authfail:{ip}", AUTH_FAILURES_PER_MINUTE)
+    return HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing or invalid API key",
+                         headers={"WWW-Authenticate": "ApiKey"})
+
+
 def authenticate(request: Request, api_key: str | None = Depends(api_key_header)) -> Principal:
     settings = get_settings()
     ip = client_ip(request)
@@ -105,16 +125,15 @@ def authenticate(request: Request, api_key: str | None = Depends(api_key_header)
         # Fail closed: an unconfigured deployment serves nothing.
         log.error("No API keys configured; rejecting request")
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Service not configured")
+    # Tighter bucket for failures: once full, this client gets no more guesses.
+    if limiter.exhausted(f"authfail:{ip}", AUTH_FAILURES_PER_MINUTE):
+        log.warning("Too many failed API key attempts from %s", ip)
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests")
     if not api_key or len(api_key) > 256:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing or invalid API key",
-                            headers={"WWW-Authenticate": "ApiKey"})
+        raise _rejected_key(request, ip)
     principal = _lookup(api_key)
     if principal is None:
-        log.warning("Rejected API key from %s on %s", ip, request.url.path)
-        # Tighter bucket for failures slows brute force further.
-        limiter.allow(f"authfail:{ip}", 20)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing or invalid API key",
-                            headers={"WWW-Authenticate": "ApiKey"})
+        raise _rejected_key(request, ip)
     if not limiter.allow(f"key:{principal.key_fingerprint}", settings.rate_limit_per_minute):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests")
     return principal
@@ -139,6 +158,7 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
     "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-site",
     "Cache-Control": "no-store",
 }

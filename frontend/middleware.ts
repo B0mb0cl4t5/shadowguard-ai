@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { safeNextPath } from "./lib/safe-next";
 import { sessionCookieName, verifySessionToken } from "./lib/session";
 
 /**
@@ -32,12 +33,6 @@ function buildCsp(nonce: string): string {
   ].join("; ");
 }
 
-function safeNext(pathname: string, search: string): string {
-  const target = pathname + search;
-  // Only same-site relative paths, never "//evil.com" (open-redirect guard).
-  return target.startsWith("/") && !target.startsWith("//") ? target : "/";
-}
-
 export async function middleware(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   const csp = buildCsp(nonce);
@@ -51,7 +46,7 @@ export async function middleware(request: NextRequest) {
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.search = `?next=${encodeURIComponent(safeNext(pathname, search))}`;
+    url.search = `?next=${encodeURIComponent(safeNextPath(pathname + search))}`;
     return NextResponse.redirect(url);
   }
 

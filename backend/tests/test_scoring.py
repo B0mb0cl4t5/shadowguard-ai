@@ -45,6 +45,7 @@ def test_exposure_scales_with_sensitivity_and_usage():
 
 def test_usage_factor_bounds():
     assert usage_factor(0) == 0.6
+    assert usage_factor(1) == 0.6705
     assert usage_factor(50) == 1.0
     assert usage_factor(10_000) == 1.0
 

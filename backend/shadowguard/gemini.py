@@ -13,7 +13,7 @@ Security posture of this module:
   allow-list, is dropped.
 * Most importantly, nothing the model says is trusted on its own. Every claim
   is passed back through idp.verify_claims, which discards any claim whose
-  quote is not an exact, continuous substring of the source policy.
+  quote is not exactly one whole sentence of the source policy.
 * The API key is sent in the x-goog-api-key header, never in the URL, so it
   cannot leak into proxy or access logs (OWASP A02).
 """

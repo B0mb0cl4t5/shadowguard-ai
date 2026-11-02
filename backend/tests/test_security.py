@@ -1,5 +1,6 @@
 """Security tests that need no database."""
 
+import logging
 import socket
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +13,8 @@ from shadowguard.db import DatabaseNotConfigured, validate_database_url
 from shadowguard.fetcher import UnsafeURLError, html_to_text, validate_url
 from shadowguard.models import DecisionRequest, TelemetryEvent
 from shadowguard.pipeline import PairState, match_domain, plan_response
+from shadowguard.security import AUTH_FAILURES_PER_MINUTE
+from simulate_live import is_safe_api_url
 
 HASH = "a" * 64
 
@@ -58,6 +61,48 @@ def test_remote_database_requires_tls():
     assert validate_database_url("postgresql://u:p@localhost/app")
 
 
+@pytest.mark.parametrize("url", [
+    "postgresql://u:p@/app?host=db.neon.tech",
+    "postgresql://u:p@localhost/app?host=db.neon.tech",
+    "postgresql://u:p@localhost/app?hostaddr=203.0.113.5",
+    "postgresql://u:p@/app?host=/var/run/postgresql&hostaddr=203.0.113.5",
+    "postgresql://u:p@/app?host=localhost,db.neon.tech",
+    "postgresql://u:p@localhost:5432,db.neon.tech:5432/app",
+])
+def test_host_overrides_cannot_skip_database_tls(url):
+    with pytest.raises(DatabaseNotConfigured):
+        validate_database_url(url)
+    assert validate_database_url(f"{url}{'&' if '?' in url else '?'}sslmode=require")
+
+
+@pytest.mark.parametrize("url", [
+    "postgresql://u:p@/app?host=/var/run/postgresql",
+    "postgresql://u:p@/app?host=localhost",
+    "postgresql://%2Fvar%2Frun%2Fpostgresql/app",
+    "postgresql://u:p@[::1]:5432/app",
+    "postgresql:///app",
+])
+def test_local_databases_do_not_need_tls(url):
+    assert validate_database_url(url)
+
+
+@pytest.mark.parametrize("url", ["https://api.example.com", "http://127.0.0.1:8000", "http://localhost:8000", "http://[::1]:8000"])
+def test_simulator_allows_https_and_local_http(url):
+    assert is_safe_api_url(url)
+
+
+@pytest.mark.parametrize("url", [
+    "http://localhost.evil.com",
+    "http://127.0.0.1.evil.com",
+    "http://evil.com/localhost",
+    "http://localhost@evil.com",
+    "ftp://localhost",
+    "http://[bad",
+])
+def test_simulator_refuses_plain_http_to_remote_hosts(url):
+    assert not is_safe_api_url(url)
+
+
 def test_api_key_config_only_accepts_sha256_digests():
     parsed = _parse_api_keys(f"admin:{HASH},viewer:not-a-hash,root:{HASH.replace('a', 'b')},bad")
     assert parsed == {HASH: "admin"}
@@ -94,11 +139,44 @@ def test_decision_note_strips_control_characters():
 
 # --- OWASP A01: access control (no DB needed: auth fails before any query) ----
 
+def assert_security_headers(response):
+    for name in ("Content-Security-Policy", "Strict-Transport-Security", "X-Content-Type-Options", "X-Frame-Options",
+                 "Referrer-Policy", "Permissions-Policy", "Cross-Origin-Opener-Policy",
+                 "Cross-Origin-Resource-Policy", "X-Request-ID"):
+        assert name in response.headers, name
+
+
 def test_health_is_public(client):
     r = client.get("/api/health")
     assert r.status_code == 200
     assert r.headers["X-Content-Type-Options"] == "nosniff"
-    assert "Strict-Transport-Security" in r.headers
+    assert_security_headers(r)
+
+
+def test_early_rejections_carry_security_headers(client):
+    too_big = client.post("/api/v1/telemetry", content=b"x" * 1_100_000)
+    assert too_big.status_code == 413
+    bad_length = client.post("/api/v1/telemetry", content=b"{}", headers={"Content-Length": "abc"})
+    assert bad_length.status_code == 400
+    chunked = client.post("/api/v1/telemetry", content=iter([b"{}"]))
+    assert chunked.status_code == 411
+    for response in (too_big, bad_length, chunked):
+        assert_security_headers(response)
+
+
+def test_unhandled_error_carries_security_headers(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from shadowguard.app import app
+
+    def boom():
+        raise RuntimeError("database exploded with a secret in the message")
+
+    monkeypatch.setattr("shadowguard.app.get_connection", boom)
+    r = TestClient(app, raise_server_exceptions=False).get("/api/v1/dashboard", headers=headers("viewer"))
+    assert r.status_code == 500
+    assert "secret" not in r.text
+    assert_security_headers(r)
 
 
 def test_missing_key_is_401(client):
@@ -107,6 +185,27 @@ def test_missing_key_is_401(client):
 
 def test_wrong_key_is_401(client):
     assert client.get("/api/v1/dashboard", headers={"X-API-Key": "sg_admin_guess"}).status_code == 401
+
+
+def test_repeated_auth_failures_lock_out_that_ip_only(client):
+    attacker = {"X-Forwarded-For": "203.0.113.9"}
+    for i in range(AUTH_FAILURES_PER_MINUTE):
+        guess = {} if i % 2 else {"X-API-Key": f"sg_admin_guess_{i}"}   # a missing key counts as a failure too
+        assert client.get("/api/v1/dashboard", headers={**attacker, **guess}).status_code == 401
+    # Locked out even with a correct key, so a lucky guess cannot be confirmed.
+    assert client.get("/api/v1/dashboard", headers={**attacker, "X-API-Key": "sg_admin_guess"}).status_code == 429
+    assert client.get("/api/v1/dashboard", headers={**attacker, **headers("viewer")}).status_code == 429
+    other = {"X-Forwarded-For": "203.0.113.10"}
+    assert client.get("/api/v1/dashboard", headers={**other, "X-API-Key": "sg_admin_guess"}).status_code == 401
+
+
+@pytest.mark.parametrize("sent", [{}, {"X-API-Key": "x" * 300}, {"X-API-Key": "sg_admin_guess"}])
+def test_failed_key_attempts_are_logged_without_the_secret(client, caplog, sent):
+    ip = "203.0.113.20"
+    with caplog.at_level(logging.WARNING, logger="shadowguard.security"):
+        assert client.get("/api/v1/dashboard", headers={"X-Forwarded-For": ip, **sent}).status_code == 401
+    assert ip in caplog.text
+    assert "sg_admin_guess" not in caplog.text and "xxxx" not in caplog.text
 
 
 def test_viewer_cannot_approve(client):

@@ -1,7 +1,8 @@
 """Vercel Python serverless entry point.
 
-vercel.json rewrites every path to this function; FastAPI then routes on the
-original request path (/api/health, /api/v1/...).
+The root vercel.json declares this as the ``backend`` service's entrypoint.
+FastAPI routes on the original request path (/api/health, /api/v1/...), whether
+the call arrives over the frontend's binding or the public telemetry rewrite.
 """
 
 import os

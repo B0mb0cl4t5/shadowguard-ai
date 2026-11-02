@@ -81,8 +81,8 @@ def vendor_posture(p: VendorPosture, approved_regions: tuple[str, ...] = ("MY", 
     """Score a vendor's data practices. Maximum 100 points (riskiest).
 
     Unverified policies (a claim failed quote-matching, statements conflict, or
-    the page tried to instruct the AI reviewer) are floored at High: an
-    adversarial page can never talk its way down to Low.
+    the page tried to instruct the AI reviewer) are floored at High: a page
+    caught doing any of this can never talk its way down to Low.
     """
     factors: list[Factor] = []
 
@@ -139,7 +139,7 @@ def vendor_posture(p: VendorPosture, approved_regions: tuple[str, ...] = ("MY", 
 
 
 def usage_factor(users: int) -> float:
-    """0.6 for a single user rising to 1.0 at USAGE_SATURATION_USERS (log scale)."""
+    """0.6 at zero users, about 0.67 for one, rising to 1.0 at USAGE_SATURATION_USERS (log scale)."""
     users = max(0, users)
     ratio = math.log10(1 + users) / math.log10(1 + USAGE_SATURATION_USERS)
     return round(0.6 + 0.4 * min(1.0, ratio), 4)

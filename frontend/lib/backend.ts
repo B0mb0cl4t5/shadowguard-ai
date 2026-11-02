@@ -23,6 +23,9 @@ export class BackendError extends Error {
 }
 
 function baseUrl(): string {
+  // On Vercel this is the service binding from vercel.json; locally it comes from
+  // .env.local. Bindings resolve at runtime in functions only, so this must never
+  // run at build time or in middleware.
   const raw = (process.env.SHADOWGUARD_API_URL ?? "").trim().replace(/\/+$/, "");
   if (!raw) throw new BackendError(503, "SHADOWGUARD_API_URL is not configured");
   const url = new URL(raw);

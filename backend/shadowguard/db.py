@@ -12,11 +12,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import ParseResult, parse_qs, unquote, urlparse
 
 import psycopg
 from psycopg.rows import dict_row
 
+from . import repository as repo
 from .config import get_settings
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", ""}
@@ -27,16 +28,24 @@ class DatabaseNotConfigured(RuntimeError):
     """Raised when DATABASE_URL is missing or unsafe."""
 
 
+def _connection_hosts(parsed: ParseResult, query: dict[str, list[str]]) -> list[str]:
+    """Every host libpq could dial: ``host``/``hostaddr`` in the query override the URL's own."""
+    override = query.get("host", []) + query.get("hostaddr", [])
+    if override:
+        return [h.strip().lower() for value in override for h in value.split(",")]
+    authority = parsed.netloc.rpartition("@")[2]
+    return [unquote(urlparse(f"//{h}").hostname or "").lower() for h in authority.split(",")]
+
+
 def validate_database_url(url: str) -> str:
     if not url:
         raise DatabaseNotConfigured("DATABASE_URL is not set")
     parsed = urlparse(url)
     if parsed.scheme not in {"postgres", "postgresql"}:
         raise DatabaseNotConfigured("DATABASE_URL must be a postgres:// URL")
-    host = (parsed.hostname or "").lower()
     query = parse_qs(parsed.query)
     sslmode = (query.get("sslmode") or [""])[0].lower()
-    is_local = host in LOCAL_HOSTS or host.startswith("/") or "host" in query
+    is_local = all(h in LOCAL_HOSTS or h.startswith("/") for h in _connection_hosts(parsed, query))
     if not is_local and sslmode not in STRONG_SSL_MODES:
         raise DatabaseNotConfigured("Remote databases require sslmode=require (or stricter)")
     return url
@@ -59,8 +68,7 @@ def get_connection() -> Iterator[psycopg.Connection]:
     )
     try:
         with conn.transaction():
-            # Bound the blast radius of any slow or runaway query.
-            conn.execute("SET LOCAL statement_timeout = '15s'")
+            repo.set_statement_timeout(conn)
             yield conn
     finally:
         conn.close()

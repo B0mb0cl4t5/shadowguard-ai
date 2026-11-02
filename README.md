@@ -31,7 +31,7 @@ flowchart LR
 | Stage | What happens | Where in the code |
 |---|---|---|
 | **1 · Discover** | Proxy/DNS events (domain, department, time, *hashed* user id) are matched against a catalogue of AI services. No payloads, no URLs, no TLS interception. | `backend/shadowguard/pipeline.py` `match_domain` · `service.ingest_telemetry` |
-| **2 · Read the terms** | The vendor's policy is screened for prompt injection, then five answers are extracted (training on inputs, retention, location, third-party sharing, opt-out). **Every answer must quote the policy verbatim** or it is discarded. Uses Gemini when `GEMINI_API_KEY` is set, otherwise a deterministic rule-based extractor; both pass through the same guard. With Gemini on, the rule-based extractor also runs as an **independent cross-check**: if the two disagree on any answer, the vendor is Unverified. | `idp.py`, `gemini.py` |
+| **2 · Read the terms** | The vendor's policy is screened for prompt injection, then five answers are extracted (training on inputs, retention, location, third-party sharing, opt-out). **Every answer must quote a whole sentence of the policy verbatim** or it is discarded. Uses Gemini when `GEMINI_API_KEY` is set, otherwise a deterministic rule-based extractor; both pass through the same guard. With Gemini on, the rule-based extractor also runs as an **independent cross-check**: if the two disagree on any answer, or only one of them has an answer, the vendor is Unverified. | `idp.py`, `gemini.py` |
 | **3 · Score** | Transparent rubric, 0–100. Vendor posture × department data sensitivity × usage spread. Every component is shown with the clause that triggered it. | `scoring.py` |
 | **4 · Respond** | High/Critical opens an incident, sends a nudge and pre-fills an IT risk ticket. Critical also *proposes* a domain block that waits for an admin. | `pipeline.plan_response`, `service._respond` |
 
@@ -45,10 +45,10 @@ flowchart LR
 | Opt-out available | no 15 · unknown 8 · yes 0 |
 | Data location | not stated 10 · outside approved regions 8 · SG/EU 4 · Malaysia 0 |
 
-**Exposure** = posture × sensitivity (student records / staff HR 1.00, finance 0.95, unpublished research 0.90, general 0.55) × usage (0.6 for one user, rising to 1.0 at 50 users).
+**Exposure** = posture × sensitivity (student records / staff HR 1.00, finance 0.95, unpublished research 0.90, general 0.55) × usage (about 0.67 for one user, rising to 1.0 at 50 users).
 **Severity:** Critical ≥ 70 · High ≥ 50 · Moderate ≥ 30 · Low.
 
-**Deterministic fallback.** If any extracted claim fails the quote check, Gemini and the rule-based extractor disagree, the policy contradicts itself, or the page tries to instruct the AI reviewer, the vendor is marked **Unverified** and its posture is floored at 50 (High). An adversarial page can never talk its way down to Low.
+**Deterministic fallback.** If any extracted claim fails the quote check, Gemini and the rule-based extractor disagree, the policy contradicts itself, or the page tries to instruct the AI reviewer, the vendor is marked **Unverified** and its posture is floored at 50 (High). A page caught by any of these checks can never talk its way down to Low. Exposure still scales with sensitivity and usage, so a lightly used Unverified tool can sit below the incident threshold. The checks are rule-based: they catch contradictions and manipulation they recognise, and a vendor that simply states clean terms is taken at its word.
 
 ---
 
@@ -72,8 +72,7 @@ shadowguard-ai/
 │   │   ├── notify.py            Teams webhook nudges
 │   │   ├── config.py · db.py
 │   ├── scripts/                 build_seed · init_db · create_api_key · simulate_live
-│   ├── tests/                   73 tests (unit + PostgreSQL integration)
-│   └── vercel.json
+│   └── tests/                   118 tests (unit + PostgreSQL integration)
 ├── frontend/                    Next.js 15 (App Router, TypeScript, Tailwind) → Vercel
 │   ├── app/                     Pages + server route handlers (the browser never sees an API key)
 │   ├── components/              Glass UI: KPI tiles, gauge, trend, tables, drawer, log
@@ -86,6 +85,7 @@ shadowguard-ai/
 ├── docs/screenshots/
 ├── DEPLOYMENT.md                Step-by-step Vercel + Neon/Supabase guide
 ├── SECURITY.md                  OWASP Top 10 checklist with code references
+├── vercel.json                  Vercel services: routing and the frontend → backend binding
 ├── package.json                 Root convenience scripts
 └── requirements.txt             → backend/requirements.txt
 ```
@@ -123,6 +123,8 @@ npm run dev:backend      # http://127.0.0.1:8000/api/health
 npm run dev:frontend     # http://localhost:3000  → sign in with the admin access code
 ```
 
+To run the project the way Vercel routes it, use `vercel dev` from the repo root. It starts both services and injects the binding. Add `--local` to skip signing in to Vercel, and export the environment variables in your shell, because local mode does not pull them from a Vercel project.
+
 Run the tests:
 
 ```bash
@@ -130,11 +132,13 @@ Run the tests:
 npm test
 # Add the PostgreSQL integration tests (uses a throwaway database; it is wiped each test)
 TEST_DATABASE_URL="postgresql://localhost/shadowguard_test" npm test
+# Frontend open-redirect tests (Node 22.6+)
+npm run test:frontend
 ```
 
 ---
 
-## The live demo (4 steps for judges)
+## The live demo (5 steps for judges)
 
 Open with the scenario: *a lecturer uploads a whole class's essays and marks into a free AI grading tool, and under Malaysia's PDPA the university now has to answer for where that data went.*
 

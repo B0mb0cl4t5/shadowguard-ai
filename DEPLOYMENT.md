@@ -1,13 +1,13 @@
 # Deploying ShadowGuard AI to Vercel
 
-ShadowGuard deploys as **two Vercel projects from the same GitHub repository**:
+ShadowGuard deploys as **one Vercel project with two [services](https://vercel.com/docs/services)**, configured in the root `vercel.json` (Vercel Services is in beta):
 
-| Project | Root Directory | Framework preset | What it serves |
-|---|---|---|---|
-| `shadowguard-api` | `backend` | Other | Python risk engine (one serverless function) |
-| `shadowguard-web` | `frontend` | Next.js | Dashboard, sign-in, server-side proxy routes |
+| Service | Root | Framework | Public paths | What it serves |
+|---|---|---|---|---|
+| `frontend` | `frontend` | Next.js | Everything except the path below | Dashboard, sign-in, server-side proxy routes |
+| `backend` | `backend` | FastAPI | `/api/v1/telemetry` only | Python risk engine (one serverless function) |
 
-Splitting them keeps the API keys on the server side of the dashboard and lets each side scale and roll back on its own. The browser only ever talks to `shadowguard-web`; `shadowguard-web` talks to `shadowguard-api` server-to-server with an API key.
+The browser only ever talks to `frontend`, which calls `backend` over a private service binding. Vercel generates the backend's internal URL and injects it into `frontend` as `SHADOWGUARD_API_URL`, and each preview deployment reaches its own backend. A binding grants network access but does not authenticate the call, so the backend still requires an API key on every request. Telemetry shippers post directly to the one public backend path with an ingest key.
 
 Allow about 20 minutes end to end.
 
@@ -41,6 +41,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO shadowguard_app;
 GRANT DELETE ON app_exposure TO shadowguard_app;          -- the only delete the app performs
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shadowguard_app;
 REVOKE UPDATE ON audit_log FROM shadowguard_app;          -- audit log is append-only
+REVOKE UPDATE ON policy_versions FROM shadowguard_app;    -- stored policy versions are write-once
 ```
 
 Keep using the owner role only for `init_db.py`.
@@ -66,20 +67,20 @@ Who gets what:
 
 | Secret | Goes to |
 |---|---|
-| The three `role:digest` lines | `shadowguard-api` → `SHADOWGUARD_API_KEYS` (comma-separated) |
-| Raw viewer key, raw admin key | `shadowguard-web` |
-| Raw ingest key | Whatever pushes telemetry (`simulate_live.py`, a log shipper) |
-| Access-code **hashes** + `SESSION_SECRET` | `shadowguard-web` |
+| The three `role:digest` lines | `SHADOWGUARD_API_KEYS` (comma-separated) |
+| Raw viewer key, raw admin key | `SHADOWGUARD_VIEWER_API_KEY`, `SHADOWGUARD_ADMIN_API_KEY` |
+| Raw ingest key | Whatever pushes telemetry (`simulate_live.py`, a log shipper), not the Vercel project |
+| Access-code **hashes** + `SESSION_SECRET` | `DASHBOARD_ADMIN_CODE_HASH`, `DASHBOARD_VIEWER_CODE_HASH`, `SESSION_SECRET` |
 | The access codes themselves | The people who sign in, shared privately |
 
 ---
 
-## 3. Deploy the backend (`shadowguard-api`)
+## 3. Deploy the project
 
 1. Push the repo to GitHub.
 2. Vercel → **Add New… → Project** → import the repo.
-3. **Root Directory:** `backend`. **Framework Preset:** Other. Leave build and output settings empty.
-4. **Environment Variables** (Production):
+3. **Root Directory:** the repository root, not `frontend` or `backend`. **Framework Preset:** Services. Leave build and output settings empty; `vercel.json` defines them for each service.
+4. **Environment Variables** (Production). None of these have a `NEXT_PUBLIC_` prefix, so none reach the browser:
 
    | Name | Value |
    |---|---|
@@ -87,39 +88,26 @@ Who gets what:
    | `SHADOWGUARD_API_KEYS` | `viewer:…,ingest:…,admin:…` |
    | `SHADOWGUARD_ENV` | `production` |
    | `ENABLE_DOCS` | `false` |
-   | `TEAMS_WEBHOOK_URL` | optional |
-   | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
-
-5. **Deploy.** Vercel installs `backend/requirements.txt` and serves `api/index.py`; `vercel.json` routes every path to it.
-6. Check it:
-   ```bash
-   curl https://shadowguard-api.vercel.app/api/health          # {"status":"ok",...}
-   curl -i https://shadowguard-api.vercel.app/api/v1/dashboard  # 401: auth is enforced
-   curl -H "X-API-Key: <raw viewer key>" https://shadowguard-api.vercel.app/api/v1/dashboard
-   ```
-
----
-
-## 4. Deploy the dashboard (`shadowguard-web`)
-
-1. Vercel → **Add New… → Project** → import the **same** repo again.
-2. **Root Directory:** `frontend`. **Framework Preset:** Next.js (auto-detected).
-3. **Environment Variables** (Production). None of these have a `NEXT_PUBLIC_` prefix, so none reach the browser:
-
-   | Name | Value |
-   |---|---|
-   | `SHADOWGUARD_API_URL` | `https://shadowguard-api.vercel.app` (no trailing slash) |
    | `SHADOWGUARD_VIEWER_API_KEY` | raw viewer key |
    | `SHADOWGUARD_ADMIN_API_KEY` | raw admin key |
    | `DASHBOARD_ADMIN_CODE_HASH` | `pbkdf2_sha256:600000:…` |
    | `DASHBOARD_VIEWER_CODE_HASH` | `pbkdf2_sha256:600000:…` |
    | `SESSION_SECRET` | output of `npm run gen-secret` |
+   | `TEAMS_WEBHOOK_URL` | optional |
+   | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
 
-4. **Deploy**, open the URL, sign in with the admin access code.
+   Do **not** set `SHADOWGUARD_API_URL`. The service binding generates it.
+
+5. **Deploy**, open the URL, sign in with the admin access code.
+6. Check the routing:
+   ```bash
+   curl -i https://YOUR-PROJECT.vercel.app/api/health            # 401 "Not signed in": the backend is not public here
+   curl -i -X POST https://YOUR-PROJECT.vercel.app/api/v1/telemetry   # 401 "Missing or invalid API key": from the backend
+   ```
 
 ---
 
-## 5. Install it as an app (PWA)
+## 4. Install it as an app (PWA)
 
 - **Windows (Edge or Chrome):** open the dashboard → install icon in the address bar → *Install*.
 - **iPad / iPhone (Safari):** Share → **Add to Home Screen**. Works in iPad Split View; the layout reflows at every width.
@@ -129,10 +117,12 @@ The service worker caches only static assets. Risk data is never stored offline.
 
 ---
 
-## 6. Run the live demo against production
+## 5. Run the live demo against production
+
+The simulator only calls `/api/v1/telemetry`, the one public backend path.
 
 ```bash
-SHADOWGUARD_API_URL=https://shadowguard-api.vercel.app \
+SHADOWGUARD_API_URL=https://YOUR-PROJECT.vercel.app \
 SHADOWGUARD_INGEST_KEY=<raw ingest key> \
 python backend/scripts/simulate_live.py --surge paperpilot.ai --interval 8
 ```
@@ -145,9 +135,9 @@ To reset the demo before going on stage, re-run `python backend/scripts/init_db.
 
 ## Operations
 
-**Rotate a key:** generate a new one, add its digest to `SHADOWGUARD_API_KEYS` *alongside* the old one, redeploy, swap the raw key in the frontend, redeploy, then remove the old digest. No downtime.
+**Rotate a key:** generate a new one, add its digest to `SHADOWGUARD_API_KEYS` *alongside* the old one, redeploy, swap the raw key variable, redeploy, then remove the old digest. No downtime.
 
-**Sign everyone out:** change `SESSION_SECRET` and redeploy `shadowguard-web`. Every existing session becomes invalid.
+**Sign everyone out:** change `SESSION_SECRET` and redeploy. Every existing session becomes invalid.
 
 **Before each release:** `npm run audit` (npm audit + pip-audit) and `npm test`.
 
@@ -155,9 +145,10 @@ To reset the demo before going on stage, re-run `python backend/scripts/init_db.
 
 | Symptom | Likely cause |
 |---|---|
-| Dashboard says "Can't reach the risk engine" | `SHADOWGUARD_API_URL` wrong, or it uses `http://` for a remote host (refused by design) |
+| Dashboard says "Can't reach the risk engine" | `SHADOWGUARD_API_URL` set by hand and overriding the binding, or the binding in `vercel.json` removed. A non-local `http://` URL is refused by design |
 | Backend returns 503 "Service not configured" | `SHADOWGUARD_API_KEYS` empty or malformed, or `DATABASE_URL` missing `sslmode=require` |
 | Sign-in says "Sign-in is not configured" | `SESSION_SECRET` missing or shorter than 32 characters |
 | Correct access code rejected | Hash pasted with a stray space or quote; regenerate with `npm run hash-password` |
 | 429 on sign-in | The brute-force limiter (5 per minute per IP). Wait a minute |
-| Python function fails to import | Root Directory for the API project must be `backend`, not the repo root |
+| Build ignores the services or the Python function fails to import | The project's Root Directory must be the repo root and its Framework Preset must be Services |
+| `simulate_live.py` gets a 401 or HTML from a preview URL | Deployment Protection applies to the public path; use the production URL or a protection bypass |

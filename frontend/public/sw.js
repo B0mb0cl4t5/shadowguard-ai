@@ -1,12 +1,12 @@
 /*
  * ShadowGuard AI service worker.
  *
- * Security rule: it caches ONLY public, versioned static assets (/_next/static,
- * icons). Pages and /api responses contain authenticated risk data, so they are
- * never cached; an offline device shows a plain offline notice instead.
+ * Security rule: it caches ONLY public, versioned static assets (/_next/static).
+ * Pages and /api responses contain authenticated risk data, so they are never
+ * cached; an offline device shows a plain offline notice instead.
  */
-const CACHE = "shadowguard-static-v1";
-const STATIC = [/^\/_next\/static\//, /^\/icons\//];
+const CACHE = "shadowguard-static-v2";
+const STATIC = [/^\/_next\/static\//];
 
 self.addEventListener("install", () => self.skipWaiting());
 

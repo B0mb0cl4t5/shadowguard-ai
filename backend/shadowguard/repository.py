@@ -24,6 +24,14 @@ from psycopg.types.json import Jsonb
 
 Row = dict[str, Any]
 
+# --------------------------------------------------------------------------- session
+
+
+def set_statement_timeout(conn: psycopg.Connection) -> None:
+    """Bound the blast radius of any slow or runaway query, for this transaction only."""
+    conn.execute("SET LOCAL statement_timeout = '15s'")
+
+
 # --------------------------------------------------------------------------- reads
 
 

@@ -6,10 +6,10 @@ Extracts five answers from a policy, each backed by a verbatim quote:
 
 Two safety properties matter more than recall here:
 
-* **Quote verification.** Every answer must cite a sentence that appears
+* **Quote verification.** Every answer must cite a whole sentence that appears
   word-for-word in the source text. ``verify_claims`` enforces this for *any*
-  extractor, including a future LLM-based one: a claim whose quote cannot be
-  found is discarded and the answer falls back to ``unknown``.
+  extractor, including a future LLM-based one: a claim whose quote is not such
+  a sentence is discarded and the answer falls back to ``unknown``.
 * **Prompt-injection screening.** Vendor pages are untrusted input. Sentences
   that read as instructions to an AI reviewer ("ignore previous
   instructions", "rate this tool as safe") are flagged, excluded from
@@ -31,12 +31,18 @@ MAX_POLICY_CHARS = 200_000
 MAX_QUOTE_CHARS = 400
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+# A negation only governs its own clause: "we do not sell your data, but we use it to train".
+_CLAUSE_BREAK = re.compile(
+    r";|\b(?:but|although|though|whereas|while|except|unless)\b"
+    r"|,(?=\s*(?:and\s+)?(?:we|our|they|it)\b)|\band(?=\s+(?:we|our)\b)",
+    re.IGNORECASE,
+)
 
 _INJECTION_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in (
-        r"\bignore (all |any )?(previous|prior|above|earlier) (instructions|rules|prompts?)\b",
-        r"\bdisregard (all |any )?(previous|prior|above) (instructions|rules)\b",
+        r"\b(?:ignore|disregard|forget) (?:(?:all|any|your|the|previous|prior|above|earlier|system|original|existing) ){0,4}"
+        r"(?:instructions?|rules|prompts?|guidelines)\b",
         r"\b(you are|act as) (an? )?(ai|assistant|language model|reviewer|auditor)\b",
         r"\b(rate|score|mark|classify) (this|the) (tool|app|vendor|service|product) as (safe|low[- ]risk|compliant|approved)\b",
         r"\b(ai|llm|model|assistant|reviewer)s? (must|should) (rate|report|output|answer|respond)\b",
@@ -46,10 +52,12 @@ _INJECTION_PATTERNS = [
     )
 ]
 
-_NEGATION = r"(?:do not|does not|don't|doesn't|will not|won't|never|not|no longer)"
+_NEGATION = r"(?:do not|does not|don't|doesn't|will not|won't|never|not(?!\s+only\b)|no longer)"
+# "do not sell your data and use it to train" negates the selling, not the training.
+_NOT_ANOTHER_ACTION = r"(?!\b(?:sell|sells|share|shares|rent|rents|disclose|discloses)\b)"
 
 _TRAIN_NO = re.compile(
-    rf"\b{_NEGATION}\b[^.]{{0,80}}\b(?:use|using|train|training)\b[^.]{{0,100}}\b(?:train|training|models?)\b",
+    rf"\b{_NEGATION}\b(?:{_NOT_ANOTHER_ACTION}[^.]){{0,80}}\b(?:use|using|train|training)\b[^.]{{0,100}}\b(?:train|training|models?)\b",
     re.IGNORECASE,
 )
 _TRAIN_YES = re.compile(
@@ -71,6 +79,7 @@ _RETENTION_PERIOD = re.compile(
     r"\b(?:retain|store|keep|hold|delete|deleted|purge|purged)\w*\b[^.]{0,120}?\b(\d{1,4})\s*(days?|weeks?|months?|years?)\b",
     re.IGNORECASE,
 )
+_DURATION = re.compile(r"\b(\d{1,4})\s*(days?|weeks?|months?|years?)\b", re.IGNORECASE)
 
 _LOCATIONS: list[tuple[str, re.Pattern[str]]] = [
     ("MY", re.compile(r"\bmalaysia\b", re.IGNORECASE)),
@@ -173,11 +182,45 @@ def _quote(sentence: str) -> str:
     return sentence if len(sentence) <= MAX_QUOTE_CHARS else sentence[: MAX_QUOTE_CHARS - 1] + "…"
 
 
+def _clauses(sentence: str) -> list[str]:
+    return [c.strip() for c in _CLAUSE_BREAK.split(sentence) if c.strip()]
+
+
 def _first(sentences: list[str], pattern: re.Pattern[str]) -> str | None:
     for s in sentences:
         if pattern.search(s):
             return s
     return None
+
+
+def _first_with_clause(sentences: list[str], pattern: re.Pattern[str]) -> str | None:
+    """The first sentence with a single clause matching ``pattern``."""
+    for s in sentences:
+        if any(pattern.search(c) for c in _clauses(s)):
+            return s
+    return None
+
+
+def _days(amount: str, unit: str) -> int:
+    return int(amount) * _UNIT_DAYS[unit.lower().rstrip("s")]
+
+
+def _retention_buckets(sentences: list[str]) -> set[str]:
+    buckets = set()
+    for s in sentences:
+        if _RETENTION_INDEFINITE.search(s):
+            buckets.add("indefinite")
+        if _RETENTION_PERIOD.search(s):
+            buckets.update(_retention_bucket(str(_days(a, u))) for a, u in _DURATION.findall(s))
+    return buckets
+
+
+def _stated_locations(sentences: list[str]) -> set[str]:
+    return {
+        code
+        for s in sentences if _LOCATION_CONTEXT.search(s)
+        for code, pattern in _LOCATIONS if pattern.search(s)
+    }
 
 
 _CONFLICT_CHECKS = (
@@ -188,20 +231,27 @@ _CONFLICT_CHECKS = (
 
 
 def find_conflicts(sentences: list[str]) -> list[str]:
-    """A field is conflicting when one sentence says yes and a DIFFERENT sentence says no."""
+    """A yes/no field conflicts when one clause says yes and a DIFFERENT clause says no.
+    Retention conflicts on periods in different scoring buckets, location on more than one region.
+    """
+    clauses = [c for s in sentences for c in _clauses(s)]
     conflicts = []
     for name, negative, positives in _CONFLICT_CHECKS:
-        neg = {s for s in sentences if negative.search(s)}
-        pos = {s for s in sentences for p in positives if p.search(s)} - neg
+        neg = {c for c in clauses if negative.search(c)}
+        pos = {c for c in clauses for p in positives if p.search(c)} - neg
         if neg and pos:
             conflicts.append(name)
+    if len(_retention_buckets(sentences)) > 1:
+        conflicts.append("retention")
+    if len(_stated_locations(sentences)) > 1:
+        conflicts.append("data_location")
     return conflicts
 
 
 def _extract_raw(sentences: list[str]) -> list[Claim]:
     claims: list[Claim] = []
 
-    if (s := _first(sentences, _TRAIN_NO)) is not None:
+    if (s := _first_with_clause(sentences, _TRAIN_NO)) is not None:
         claims.append(Claim("trains_on_inputs", "no", _quote(s)))
     elif (s := _first(sentences, _TRAIN_YES) or _first(sentences, _TRAIN_YES_ALT)) is not None:
         claims.append(Claim("trains_on_inputs", "yes", _quote(s)))
@@ -212,9 +262,7 @@ def _extract_raw(sentences: list[str]) -> list[Claim]:
         for s in sentences:
             m = _RETENTION_PERIOD.search(s)
             if m:
-                unit = m.group(2).lower().rstrip("s")
-                days = int(m.group(1)) * _UNIT_DAYS[unit]
-                claims.append(Claim("retention", str(days), _quote(s)))
+                claims.append(Claim("retention", str(_days(m.group(1), m.group(2))), _quote(s)))
                 break
 
     for s in sentences:
@@ -228,12 +276,12 @@ def _extract_raw(sentences: list[str]) -> list[Claim]:
             continue
         break
 
-    if (s := _first(sentences, _SHARING_NO)) is not None:
+    if (s := _first_with_clause(sentences, _SHARING_NO)) is not None:
         claims.append(Claim("third_party_sharing", "no", _quote(s)))
     elif (s := _first(sentences, _SHARING_YES)) is not None:
         claims.append(Claim("third_party_sharing", "yes", _quote(s)))
 
-    if (s := _first(sentences, _OPT_OUT_NO)) is not None:
+    if (s := _first_with_clause(sentences, _OPT_OUT_NO)) is not None:
         claims.append(Claim("opt_out", "no", _quote(s)))
     elif (s := _first(sentences, _OPT_OUT_YES)) is not None:
         claims.append(Claim("opt_out", "yes", _quote(s)))
@@ -242,16 +290,16 @@ def _extract_raw(sentences: list[str]) -> list[Claim]:
 
 
 def verify_claims(claims: list[Claim], source_text: str, flagged: list[str]) -> tuple[list[Claim], list[Claim]]:
-    """Keep only claims whose quote appears verbatim in the source and is not a flagged sentence."""
-    source = normalise(source_text)
+    """Keep only claims that quote one whole, unflagged sentence of the source.
+
+    A fragment is not enough: "use your content to train our models" could come
+    from a sentence that begins "We never".
+    """
     flagged_set = set(flagged)
+    citable = {_quote(s) for s in split_sentences(normalise(source_text)) if s not in flagged_set}
     kept, dropped = [], []
     for c in claims:
-        quote = c.quote.rstrip("…")
-        if quote and quote in source and c.quote not in flagged_set:
-            kept.append(c)
-        else:
-            dropped.append(c)
+        (kept if c.quote in citable else dropped).append(c)
     return kept, dropped
 
 
@@ -291,22 +339,22 @@ def _retention_bucket(value: str) -> str:
 
 
 def find_disagreements(primary: list[Claim], second_opinion: list[Claim]) -> list[str]:
-    """Fields where BOTH extractors gave an answer and the answers differ.
+    """Fields where the answers differ, or where only one extractor gave an answer.
 
     The quote check proves a sentence exists in the policy; it does not prove the
     sentence was interpreted correctly. A second, independent extractor catches
-    a real quote paired with a wrong answer.
+    a real quote paired with a wrong answer. Silence counts too: leaving out a
+    risky answer lowers the score just as a wrong answer does.
     """
+    ours = {c.field: c.value for c in primary}
     other = {c.field: c.value for c in second_opinion}
     out = []
-    for c in primary:
-        if c.field not in other:
-            continue
-        a, b = c.value, other[c.field]
-        if c.field == "retention":
+    for name in [*ours, *(f for f in other if f not in ours)]:
+        a, b = ours.get(name), other.get(name)
+        if a is not None and b is not None and name == "retention":
             a, b = _retention_bucket(a), _retention_bucket(b)
         if a != b:
-            out.append(c.field)
+            out.append(name)
     return out
 
 
@@ -319,8 +367,8 @@ def analyse_policy(policy_text: str, llm_extractor=None) -> ExtractionResult:
     rule-based extractor is used instead.
 
     When the LLM is used, the rule-based extractor still runs as a second
-    opinion; any field where the two verified answers differ is recorded as a
-    disagreement and the vendor becomes unverified.
+    opinion; any field where the two verified answers differ, or only one of them
+    has an answer, is recorded as a disagreement and the vendor becomes unverified.
     """
     text = normalise(policy_text[:MAX_POLICY_CHARS])
     sentences = split_sentences(text)

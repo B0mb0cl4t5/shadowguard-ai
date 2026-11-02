@@ -11,6 +11,7 @@
     "build": "npm --prefix frontend run build",
     "typecheck": "npm --prefix frontend run typecheck",
     "test": "cd backend && python -m pytest",
+    "test:frontend": "npm --prefix frontend test",
     "db:init": "python backend/scripts/init_db.py",
     "db:seed:rebuild": "python backend/scripts/build_seed.py",
     "keys:viewer": "python backend/scripts/create_api_key.py viewer",

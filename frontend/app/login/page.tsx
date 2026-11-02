@@ -1,12 +1,12 @@
 import { ShieldMark } from "@/components/icons";
 import { LoginForm } from "@/components/login-form";
+import { safeNextPath } from "@/lib/safe-next";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
-  // Open-redirect guard: only same-site relative paths are honoured.
-  const target = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const target = safeNextPath(next);
 
   return (
     <main className="grid min-h-dvh place-items-center p-5">

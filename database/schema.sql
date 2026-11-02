@@ -11,7 +11,8 @@
 --     database rejects bad data even if an application-layer check is bypassed
 --     (defence in depth for OWASP A03 Injection / A08 Integrity Failures).
 --   * The application connects with a role that only needs SELECT/INSERT/
---     UPDATE on these tables. See README "Least-privilege database role".
+--     UPDATE on these tables. See DEPLOYMENT.md "a least-privilege role for
+--     the app".
 -- =============================================================================
 
 BEGIN;

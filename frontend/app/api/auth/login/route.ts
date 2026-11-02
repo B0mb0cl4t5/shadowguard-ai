@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     /* fall through to the generic failure */
   }
   if (code.length < 8 || code.length > 128) {
+    console.warn(`[auth] failed sign-in from ${ip}`);
     return NextResponse.json({ detail: "Invalid access code" }, { status: 401 });
   }
 

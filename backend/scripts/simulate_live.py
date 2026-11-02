@@ -18,11 +18,23 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from demo_catalog import USAGE  # noqa: E402
+
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def is_safe_api_url(url: str) -> bool:
+    """An API key may go to any https URL, but over plain http only to this machine."""
+    try:
+        parts = urlsplit(url)
+        return parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in LOCAL_HOSTS)
+    except ValueError:
+        return False
 
 
 def make_event(domain: str, dept: str, pool: int, rng: random.Random) -> dict:
@@ -50,7 +62,7 @@ def main() -> None:
     key = os.getenv("SHADOWGUARD_INGEST_KEY", "")
     if not key:
         sys.exit("Set SHADOWGUARD_INGEST_KEY (an 'ingest' or 'admin' key).")
-    if not base.startswith("https://") and "127.0.0.1" not in base and "localhost" not in base:
+    if not is_safe_api_url(base):
         sys.exit("Refusing to send an API key over plain http to a remote host.")
 
     rng = random.Random()

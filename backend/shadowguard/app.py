@@ -21,7 +21,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from . import __version__, service
 from . import repository as repo
@@ -62,6 +62,13 @@ if settings.allowed_origins:
 MAX_BODY_BYTES = 1_000_000  # 1 MB; the largest legitimate body is a 200k-char policy
 
 
+def _harden(response: Response, request_id: str) -> Response:
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
 @app.middleware("http")
 async def hardening(request: Request, call_next):
     request_id = uuid.uuid4().hex[:16]
@@ -71,17 +78,13 @@ async def hardening(request: Request, call_next):
         try:
             too_big = int(declared) > MAX_BODY_BYTES
         except ValueError:
-            return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+            return _harden(JSONResponse({"detail": "Invalid Content-Length"}, status_code=400), request_id)
         if too_big:
-            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+            return _harden(JSONResponse({"detail": "Request body too large"}, status_code=413), request_id)
     elif request.method == "POST" and request.headers.get("transfer-encoding", "").lower() == "chunked":
         # Refuse unbounded streamed bodies; legitimate clients send a length.
-        return JSONResponse({"detail": "Content-Length required"}, status_code=411)
-    response = await call_next(request)
-    for header, value in SECURITY_HEADERS.items():
-        response.headers.setdefault(header, value)
-    response.headers["X-Request-ID"] = request_id
-    return response
+        return _harden(JSONResponse({"detail": "Content-Length required"}, status_code=411), request_id)
+    return _harden(await call_next(request), request_id)
 
 
 @app.exception_handler(RequestValidationError)
@@ -103,7 +106,8 @@ async def unhandled(request: Request, exc: Exception):
     # OWASP A05/A09: log the full error server-side, return nothing internal.
     request_id = getattr(request.state, "request_id", "unknown")
     log.exception("Unhandled error (request %s)", request_id)
-    return JSONResponse({"detail": "Internal error", "request_id": request_id}, status_code=500)
+    # This handler runs outside the hardening middleware, so it adds the headers itself.
+    return _harden(JSONResponse({"detail": "Internal error", "request_id": request_id}, status_code=500), request_id)
 
 
 Id = Annotated[int, Path(ge=1, le=2_147_483_647)]
