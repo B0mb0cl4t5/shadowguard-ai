@@ -83,11 +83,13 @@
   }
 }
 
+/* Delays go too, or a staggered chart would sit blank for its delay before jumping in. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
@@ -98,6 +100,7 @@
 .reduce-motion *::before,
 .reduce-motion *::after {
   animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }

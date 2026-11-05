@@ -40,13 +40,16 @@ export function ExposureGauge({ value }: { value: number }) {
     [51, 69, "high"],
     [71, 100, "critical"],
   ];
-  const [nx, ny] = point(v);
+  const [zx, zy] = point(0);
   return (
-    <svg viewBox="0 0 128 72" className="w-full" role="img" aria-label={`Exposure index ${v.toFixed(1)} of 100`}>
+    <svg viewBox="0 0 128 72" className="w-full overflow-visible" role="img" aria-label={`Exposure index ${v.toFixed(1)} of 100`}>
       {bands.map(([a, b, s]) => (
         <path key={s} d={arc(a, b)} style={{ stroke: SEVERITY_STYLE[s].stroke }} strokeWidth="9" fill="none" />
       ))}
-      <circle cx={nx} cy={ny} r="6.5" style={{ fill: "var(--surface)", stroke: "var(--text)" }} strokeWidth="3" />
+      {/* The marker sits at zero and turns to the value: it sweeps up on load and glides when a poll moves the index. */}
+      <g className="animate-needle transition-[rotate] duration-700 ease-out" style={{ rotate: `${v * 1.8}deg`, transformOrigin: "64px 64px" }}>
+        <circle cx={zx} cy={zy} r="6.5" style={{ fill: "var(--surface)", stroke: "var(--text)" }} strokeWidth="3" />
+      </g>
     </svg>
   );
 }
@@ -58,8 +61,9 @@ export function UnitDots({ marks, label }: { marks: string[]; label: string }) {
   const extra = marks.length - MAX_DOTS;
   return (
     <span className="flex flex-wrap items-center gap-1" role="img" aria-label={label} title={label}>
+      {/* Each dot pops in, one after another, so the count is seen being made; a new item pops in on its own. */}
       {marks.slice(0, MAX_DOTS).map((mark, i) => (
-        <span key={i} className={`h-2.5 w-2.5 rounded-full ${mark}`} />
+        <span key={i} className={`h-2.5 w-2.5 animate-pop rounded-full ${mark}`} style={{ animationDelay: `${200 + i * 45}ms` }} />
       ))}
       {extra > 0 && <span className="font-mono text-xs text-muted">+{extra}</span>}
     </span>
@@ -113,7 +117,7 @@ export function SeverityRing({ counts }: { counts: Record<Severity, number> }) {
                 strokeWidth={active === s ? 16 : 13}
                 strokeDasharray={`${dash} ${circumference - dash}`}
                 strokeDashoffset={-offset}
-                className="transition-[opacity,stroke-width]"
+                className="animate-sweep transition-[opacity,stroke-width]"
               />
             );
             offset += length;
@@ -176,7 +180,7 @@ export function DepartmentBars({ departments }: { departments: DepartmentExposur
 
   return (
     <ul className="space-y-2.5">
-      {rows.map((d) => {
+      {rows.map((d, i) => {
         const severity = severityFor(d.max_score);
         return (
           <li key={d.name} title={`${d.name}: ${d.max_score}, ${SEVERITY_LABEL[severity]}, ${d.shadow_tools} shadow tools`}>
@@ -189,8 +193,8 @@ export function DepartmentBars({ departments }: { departments: DepartmentExposur
             </div>
             <div className="h-1.5 rounded-full bg-raised overflow-hidden" aria-hidden>
               <div
-                className={`h-full rounded-full ${SEVERITY_STYLE[severity].mark} transition-[width] duration-500 ease-out`}
-                style={{ width: `${d.max_score}%` }}
+                className={`h-full origin-left animate-grow-x rounded-full ${SEVERITY_STYLE[severity].mark} transition-[width] duration-500 ease-out`}
+                style={{ width: `${d.max_score}%`, animationDelay: `${i * 50}ms` }}
               />
             </div>
           </li>
@@ -267,7 +271,8 @@ export function DetectionColumns({ points }: { points: TrendPoint[] }) {
             return (
               <div
                 key={p.day}
-                className={`pointer-events-none relative flex h-full flex-1 flex-col justify-end gap-px rounded-sm transition-opacity ${pick !== null && pick !== i ? "opacity-50" : ""}`}
+                className={`pointer-events-none relative flex h-full flex-1 origin-bottom animate-grow-up flex-col justify-end gap-px rounded-sm transition-opacity ${pick !== null && pick !== i ? "opacity-50" : ""}`}
+                style={{ animationDelay: `${i * 30}ms` }}
               >
                 <div className="rounded-t-sm bg-sev-critical transition-[height] duration-300 ease-out" style={{ height: `${(p.critical / max) * 100}%` }} />
                 <div className={`bg-data ${p.critical === 0 ? "rounded-t-sm" : ""} transition-[height] duration-300 ease-out`} style={{ height: `${(rest / max) * 100}%` }} />
@@ -343,7 +348,7 @@ export function RiskMap({ apps, onOpen }: { apps: ShadowApp[]; onOpen: (app: Sha
               {SEVERITY_LABEL[z.severity]}
             </div>
           ))}
-          {dots.map(({ app, x, y, shift, flip }) => {
+          {dots.map(({ app, x, y, shift, flip }, rank) => {
             const size = 10 + app.departments.length * 4;
             return (
               <Button
@@ -360,8 +365,8 @@ export function RiskMap({ apps, onOpen }: { apps: ShadowApp[]; onOpen: (app: Sha
               >
                 <span
                   // The dot's size is data (how many departments), so hover rings it instead of growing it.
-                  className={`block rounded-full ${SEVERITY_STYLE[app.severity].mark} ring-2 ring-surface transition-shadow group-hover:ring-ink group-focus-visible:ring-ink`}
-                  style={{ width: size, height: size }}
+                  className={`block animate-pop rounded-full ${SEVERITY_STYLE[app.severity].mark} ring-2 ring-surface transition-shadow group-hover:ring-ink group-focus-visible:ring-ink`}
+                  style={{ width: size, height: size, animationDelay: `${rank * 60}ms` }}
                 />
                 <span
                   className={`pointer-events-none absolute whitespace-nowrap text-xs font-medium text-ink ${flip ? "right-full mr-1" : "left-full ml-1"}`}

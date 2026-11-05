@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatBytes, secondsAgo } from "@/lib/format";
 import type { LiveEvent, LiveFeed, ShadowApp } from "@/lib/types";
 
+import { AnimatedNumber } from "./animated-number";
 import { SeverityBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { EmptyState, Panel } from "./ui/card";
@@ -21,6 +22,20 @@ const REGION_LABEL: Record<LiveEvent["data_location"], string> = {
 };
 
 /**
+ * Fills toward the next check and starts again each time the server answers, so the feed
+ * visibly keeps watching while nothing arrives. It stops, empty, when the connection drops.
+ */
+function NextCheck({ beat, every }: { beat: number | null; every: number }) {
+  return (
+    <div className="mb-1 h-0.5 overflow-hidden rounded-full bg-raised" aria-hidden title={`Checks for new traffic every ${every / 1000} seconds`}>
+      {beat !== null && beat > 0 && (
+        <span key={beat} className="block h-full origin-left animate-countdown rounded-full bg-positive" style={{ animationDuration: `${every}ms` }} />
+      )}
+    </div>
+  );
+}
+
+/**
  * The newest traffic to unapproved tools, as it arrives. It shows the tool and department
  * only: no person, hashed or otherwise. Old events keep their real age, so a quiet feed
  * reads as quiet rather than pretending to be live.
@@ -29,6 +44,8 @@ export function LiveTraffic({
   events,
   lastMinute,
   connected,
+  beat,
+  checkEveryMs,
   apps,
   onOpen,
   className = "",
@@ -36,12 +53,15 @@ export function LiveTraffic({
   events: LiveEvent[];
   lastMinute: LiveFeed["last_minute"] | null;
   connected: boolean;
+  /** The server's answer count, or null while the connection is down. */
+  beat: number | null;
+  checkEveryMs: number;
   apps: ShadowApp[];
   onOpen: (app: ShadowApp) => void;
   className?: string;
 }) {
   const [now, setNow] = useState(0);
-  // Rows newer than this arrived while watching, so they get a brief highlight. The first batch is history.
+  // Rows newer than this arrived while watching, so they slide in and glow briefly. The first batch is history.
   const firstSeen = useRef<number | null>(null);
   if (firstSeen.current === null && events[0]) firstSeen.current = events[0].id;
 
@@ -54,18 +74,25 @@ export function LiveTraffic({
   return (
     <Panel
       title="Live traffic"
-      note="Newest first, from your network logs. It shows tools and departments, never people."
+      note={`Newest first, from your network logs, checked every ${checkEveryMs / 1000} seconds. It shows tools and departments, never people.`}
       className={className}
       bodyClassName="py-2"
       action={
         lastMinute && (
           <p className="text-xs text-ink2">
-            <span className="font-mono text-ink">{lastMinute.events}</span> in the last minute,{" "}
-            <span className="font-mono text-ink">{formatBytes(lastMinute.bytes_out)}</span> out
+            <span className="font-mono text-ink">
+              <AnimatedNumber value={lastMinute.events} />
+            </span>{" "}
+            in the last minute,{" "}
+            <span className="font-mono text-ink">
+              <AnimatedNumber value={lastMinute.bytes_out} format={(n) => formatBytes(Math.round(n))} />
+            </span>{" "}
+            out
           </p>
         )
       }
     >
+      <NextCheck beat={beat} every={checkEveryMs} />
       {events.length === 0 ? (
         <div className="py-3">
           <EmptyState>
@@ -80,7 +107,7 @@ export function LiveTraffic({
             return (
               <li
                 key={e.id}
-                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_7rem_auto] ${fresh ? "animate-fade-in" : ""}`}
+                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_7rem_auto] ${fresh ? "animate-arrive" : ""}`}
               >
                 <time className="order-last font-mono text-xs text-muted lg:order-none" dateTime={e.observed_at}>
                   {now ? secondsAgo(e.observed_at, now) : ""}

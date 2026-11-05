@@ -103,6 +103,39 @@ const config: Config = {
           "92%": { opacity: "1" },
           "100%": { offsetDistance: "100%", opacity: "0" },
         },
+        // Liveness: once per server answer, never on a timer of its own.
+        beat: {
+          "0%": { scale: "1", opacity: "0.8" },
+          "100%": { scale: "3.2", opacity: "0" },
+        },
+        countdown: {
+          "0%": { scale: "0 1" },
+          "100%": { scale: "1 1" },
+        },
+        land: {
+          "0%": { scale: "0.3", opacity: "0.9" },
+          "100%": { scale: "2.6", opacity: "0" },
+        },
+        arrive: {
+          "0%": { translate: "0 -6px", opacity: "0", backgroundColor: "var(--raised)" },
+          "20%": { translate: "0 0", opacity: "1", backgroundColor: "var(--raised)" },
+          "100%": { backgroundColor: "transparent" },
+        },
+        // Charts drawing in as their data arrives. Most start from nothing and end at the
+        // element's own value, so one keyframe serves every bar, segment and needle.
+        wipe: {
+          "0%": { clipPath: "inset(0 100% 0 0)" },
+          "100%": { clipPath: "inset(0 0 0 0)" },
+        },
+        "grow-up": { "0%": { scale: "1 0" } },
+        "grow-x": { "0%": { scale: "0 1" } },
+        pop: { "0%": { scale: "0", opacity: "0" } },
+        sweep: { "0%": { strokeDasharray: "0 400" } },
+        needle: { "0%": { rotate: "0deg" } },
+        draw: {
+          "0%": { strokeDasharray: "1 1", strokeDashoffset: "1" },
+          "100%": { strokeDasharray: "1 1", strokeDashoffset: "0" },
+        },
       },
       animation: {
         "rise-in": "rise-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
@@ -112,6 +145,20 @@ const config: Config = {
         "drawer-in": "drawer-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
         "scale-in": "scale-in 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both",
         travel: "travel 1400ms ease-in-out both",
+        // A decelerating curve, so marks settle like something with weight. `backwards` hands each
+        // element back its own style when the animation ends, so later changes can transition.
+        beat: "beat 900ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        // A clock, so it runs at an even pace. The interval is set inline from the poll.
+        countdown: "countdown 4000ms linear both",
+        land: "land 700ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        arrive: "arrive 2400ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        wipe: "wipe 900ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        "grow-up": "grow-up 600ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        "grow-x": "grow-x 700ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        pop: "pop 420ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        sweep: "sweep 1000ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        needle: "needle 1000ms cubic-bezier(0.16, 1, 0.3, 1) backwards",
+        draw: "draw 900ms cubic-bezier(0.65, 0, 0.35, 1) backwards",
       },
     },
   },

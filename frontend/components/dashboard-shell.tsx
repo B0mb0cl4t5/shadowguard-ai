@@ -39,6 +39,8 @@ type LiveState = {
   lastMinute: LiveFeed["last_minute"] | null;
   policiesChangedAt: string | null;
   syncedAt: number | null;
+  /** Counts the server's answers. The Live dot beats and the next-check line restarts on each one, so a stalled feed stops them. */
+  beat: number;
 };
 
 type TabId = "overview" | "tools" | "reviews" | "departments";
@@ -112,7 +114,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   const [compareApps, setCompareApps] = useState<ShadowApp[]>([]);
   const inFlight = useRef(false);
   const refreshAgain = useRef(false);
-  const [live, setLive] = useState<LiveState>({ events: [], lastMinute: null, policiesChangedAt: null, syncedAt: null });
+  const [live, setLive] = useState<LiveState>({ events: [], lastMinute: null, policiesChangedAt: null, syncedAt: null, beat: 0 });
   const liveBusy = useRef(false);
   const afterId = useRef(0);
   const revision = useRef<string | null>(null);
@@ -237,6 +239,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           lastMinute: feed.last_minute,
           policiesChangedAt: feed.policies_changed_at,
           syncedAt: Date.now(),
+          beat: current.beat + 1,
         };
       });
       setStale(false);
@@ -362,13 +365,19 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             <span className="hidden text-sm text-muted sm:inline">University network</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* On a phone the controls wrap rather than push the page sideways. */}
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             {/* Connection status: announces changes to screen readers, not the clock. */}
             <span className="sr-only" role="status">
               {stale ? "Connection lost. Reconnecting." : "Connection live."}
             </span>
-            <Badge tone={stale ? "warning" : "success"} className="hidden sm:inline-flex">
-              {stale ? "Reconnecting…" : "Live"}
+            {/* The dot beats once each time the server answers, so a working connection shows even on a quiet network. On a phone the dot alone says it. */}
+            <Badge tone={stale ? "warning" : "success"} title={stale ? "The last check failed. Retrying." : `Checking for new traffic every ${LIVE_MS / 1000} seconds`}>
+              <span className="relative flex h-2 w-2" aria-hidden>
+                {!stale && live.beat > 0 && <span key={live.beat} className="absolute inset-0 rounded-full bg-positive opacity-0 animate-beat" />}
+                <span className={`relative h-2 w-2 rounded-full ${stale ? "bg-warning" : "bg-positive"}`} />
+              </span>
+              <span className="hidden sm:inline">{stale ? "Reconnecting…" : "Live"}</span>
             </Badge>
             <span className="hidden items-center gap-1.5 text-xs text-muted sm:inline-flex">
               <LastSynced at={live.syncedAt} />
@@ -419,13 +428,13 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
               <span className="hidden md:inline">Search</span>
               <kbd className="hidden font-mono text-xs font-normal text-muted md:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => window.print()} aria-label="Print this view" title="Print">
+            <Button variant="ghost" size="icon" onClick={() => window.print()} aria-label="Print this view" title="Print" className="hidden sm:inline-flex">
               <PrinterIcon size={16} />
             </Button>
             {/* A reminder to switch demo sign-in off: while it's on, anyone with the link gets in. */}
             {demo && (
               <Badge tone="warning" title="Demo sign-in is on (DEMO_SIGN_IN), so anyone with the link can sign in. Turn it off after recording.">
-                Demo mode
+                Demo<span className="hidden sm:inline"> mode</span>
               </Badge>
             )}
             <span className="px-1 text-xs text-ink2">{role === "admin" ? "Admin" : "Viewer"}</span>
@@ -473,6 +482,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                     events={live.events}
                     lastMinute={live.lastMinute}
                     connected={live.syncedAt !== null}
+                    beat={stale ? null : live.beat}
+                    checkEveryMs={LIVE_MS}
                     apps={data.apps}
                     onOpen={setSelected}
                     className="flex-1"

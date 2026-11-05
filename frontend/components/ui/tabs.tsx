@@ -33,7 +33,8 @@ export function Tabs<T extends string>({
   };
 
   return (
-    <div role="tablist" aria-label={label} className="flex gap-6 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none]">
+    // `relative` keeps a tab's screen-reader-only text inside this scroller, or it widens the page on a phone.
+    <div role="tablist" aria-label={label} className="relative flex gap-6 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none]">
       {items.map((item) => {
         const active = item.id === selected;
         return (

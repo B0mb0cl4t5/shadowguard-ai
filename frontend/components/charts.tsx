@@ -91,7 +91,8 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
           onPointerDown={(e) => pick(e.clientX)}
           onPointerLeave={() => setHover(null)}
         >
-          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+          {/* The fortnight is drawn left to right when the chart opens, ending on today. */}
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full animate-wipe overflow-visible" aria-hidden>
             <defs>
               <linearGradient id={`fill-${id}`} x1="0" x2="0" y1="0" y2="1">
                 <stop offset="0%" style={{ stopColor: "var(--data)" }} stopOpacity="0.45" />
@@ -129,8 +130,8 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
             <>
               <div className="pointer-events-none absolute inset-y-0 w-px bg-control" style={{ left: `${(activeCoord[0] / W) * 100}%` }} />
               <div
-                className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-data"
-                style={{ left: `${(activeCoord[0] / W) * 100}%`, top: `${(activeCoord[1] / H) * 100}%` }}
+                className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 animate-pop rounded-full bg-data"
+                style={{ left: `${(activeCoord[0] / W) * 100}%`, top: `${(activeCoord[1] / H) * 100}%`, animationDelay: "650ms" }}
               />
             </>
           )}

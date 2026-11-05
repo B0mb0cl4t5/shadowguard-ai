@@ -6,6 +6,7 @@ import { SEVERITY_LABEL, SEVERITY_STYLE, formatBytes } from "@/lib/format";
 import type { DataLocation, DestinationIp, LiveEvent, LiveFeed, Severity, ShadowApp } from "@/lib/types";
 import { MAP_H as H, MAP_W as W, dotPath, isMalaysia, project, type Point } from "@/lib/world-map";
 
+import { AnimatedNumber } from "./animated-number";
 import { Button } from "./ui/button";
 
 /** Which land dots belong to a region, so a region with traffic lights up rather than only getting a marker. */
@@ -48,7 +49,13 @@ type Flow = {
 
 const MAX_IPS = 4;
 const PULSE_MS = 1400;
+/** The ring where a dot lands starts just before the dot fades out. */
+const LAND_AT = PULSE_MS * 0.9;
+const LAND_MS = 700;
 const MAX_PULSES_PER_BATCH = 6;
+/** In the draw-in, when an outbound arc (900ms) has nearly reached its region and the marker lands. */
+const ARRIVE_MS = 750;
+const STAGGER_MS = 120;
 
 /** The busiest addresses across a region's tools, largest first. */
 function busiestIps(apps: ShadowApp[]): DestinationIp[] {
@@ -97,7 +104,7 @@ function usePulses(events: LiveEvent[]): Pulse[] {
       ]);
     if (batch.length === 0) return;
     setPulses((current) => [...current, ...batch]);
-    const longest = Math.max(...batch.map((p) => p.delay)) + PULSE_MS + 100;
+    const longest = Math.max(...batch.map((p) => p.delay)) + LAND_AT + LAND_MS + 100;
     const timer = setTimeout(() => {
       timers.current.delete(timer);
       const done = new Set(batch.map((p) => p.key));
@@ -170,17 +177,24 @@ export function TrafficMap({
     <dl className="flex gap-x-6 gap-y-2 sm:flex-col">
       <div>
         <dt className="text-xs text-muted">Sent</dt>
-        <dd className="font-mono text-lg font-medium leading-tight text-ink">{formatBytes(total)}</dd>
+        <dd className="font-mono text-lg font-medium leading-tight text-ink">
+          <AnimatedNumber value={total} format={(n) => formatBytes(Math.round(n))} />
+        </dd>
       </div>
       <div>
         <dt className="text-xs text-muted">Received</dt>
-        <dd className="font-mono text-lg font-medium leading-tight text-ink">{totalIn > 0 ? formatBytes(totalIn) : "Not reported"}</dd>
+        <dd className="font-mono text-lg font-medium leading-tight text-ink">
+          {totalIn > 0 ? <AnimatedNumber value={totalIn} format={(n) => formatBytes(Math.round(n))} /> : "Not reported"}
+        </dd>
       </div>
       {lastMinute && (
         <div>
           <dt className="text-xs text-muted">Last minute</dt>
           <dd className="text-sm text-ink2">
-            <span className="font-mono text-ink">{lastMinute.events}</span> {lastMinute.events === 1 ? "event" : "events"}
+            <span className="font-mono text-ink">
+              <AnimatedNumber value={lastMinute.events} />
+            </span>{" "}
+            {lastMinute.events === 1 ? "event" : "events"}
           </dd>
         </div>
       )}
@@ -211,53 +225,68 @@ export function TrafficMap({
           {!flows.some((f) => f.id === "MY") && (
             <path d={REGION_PATHS.MY} fill="none" style={{ stroke: "var(--accent)" }} opacity="0.7" strokeWidth="3.4" strokeLinecap="round" />
           )}
+          {/* On load each arc draws out from the campus (and back, for traffic in), then its marker lands. */}
           {placed
             .filter((f) => f.bytesIn > 0)
-            .map((f) => (
+            .map((f, i) => (
               <path
                 key={f.id}
                 d={inPath(f.at!)}
                 fill="none"
-                style={{ stroke: "var(--data)", opacity: dim(f) }}
+                pathLength={1}
+                style={{ stroke: "var(--data)", opacity: dim(f), animationDelay: `${ARRIVE_MS + 100 + i * STAGGER_MS}ms` }}
                 strokeWidth="1"
                 vectorEffect="non-scaling-stroke"
                 strokeLinecap="round"
-                className="transition-opacity"
+                className="animate-draw transition-opacity"
               />
             ))}
-          {placed.map((f) => (
+          {placed.map((f, i) => (
             <path
               key={f.id}
               d={outPath(f.at!)}
               fill="none"
-              style={{ stroke: SEVERITY_STYLE[f.worst].stroke, opacity: dim(f) }}
+              pathLength={1}
+              style={{ stroke: SEVERITY_STYLE[f.worst].stroke, opacity: dim(f), animationDelay: `${i * STAGGER_MS}ms` }}
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
               strokeLinecap="round"
-              className="transition-opacity"
+              className="animate-draw transition-opacity"
             />
           ))}
           {pulses.map((p) => {
             const flow = placed.find((f) => f.id === p.region);
             if (!flow) return null;
             const color = p.direction === "out" ? SEVERITY_STYLE[flow.worst].stroke : "var(--data)";
+            const [lx, ly] = p.direction === "out" ? flow.at! : HOME;
             return (
-              <circle
-                key={p.key}
-                r="4.5"
-                className="animate-travel"
-                style={{
-                  fill: color,
-                  stroke: "var(--surface)",
-                  strokeWidth: 1.5,
-                  offsetPath: `path("${p.direction === "out" ? outPath(flow.at!) : inPath(flow.at!)}")`,
-                  offsetRotate: "0deg",
-                  animationDelay: `${p.delay}ms`,
-                }}
-              />
+              <g key={p.key}>
+                <circle
+                  r="4.5"
+                  className="animate-travel"
+                  style={{
+                    fill: color,
+                    stroke: "var(--surface)",
+                    strokeWidth: 1.5,
+                    offsetPath: `path("${p.direction === "out" ? outPath(flow.at!) : inPath(flow.at!)}")`,
+                    offsetRotate: "0deg",
+                    animationDelay: `${p.delay}ms`,
+                  }}
+                />
+                {/* Where it lands, a ring opens once: the event has reached its destination. */}
+                <circle
+                  cx={lx}
+                  cy={ly}
+                  r="12"
+                  fill="none"
+                  className="animate-land opacity-0"
+                  style={{ stroke: color, strokeWidth: 1.5, transformBox: "fill-box", transformOrigin: "center", animationDelay: `${p.delay + LAND_AT}ms` }}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
             );
           })}
-          {placed.map((f) => {
+          {placed.map((f, i) => {
             const [x, y] = f.at!;
             return (
               <g
@@ -268,7 +297,20 @@ export function TrafficMap({
                 className="transition-opacity"
               >
                 <title>{`${f.label}: ${formatBytes(f.bytes)} out, ${formatBytes(f.bytesIn)} in, ${f.apps.length} ${f.apps.length === 1 ? "tool" : "tools"}`}</title>
-                <circle cx={x} cy={y} r={size(f)} style={{ fill: SEVERITY_STYLE[f.worst].stroke, stroke: "var(--surface)" }} strokeWidth="3" />
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={size(f)}
+                  className="animate-pop"
+                  style={{
+                    fill: SEVERITY_STYLE[f.worst].stroke,
+                    stroke: "var(--surface)",
+                    transformBox: "fill-box",
+                    transformOrigin: "center",
+                    animationDelay: `${ARRIVE_MS + i * STAGGER_MS}ms`,
+                  }}
+                  strokeWidth="3"
+                />
               </g>
             );
           })}

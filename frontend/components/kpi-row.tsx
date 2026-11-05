@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { SEVERITY_LABEL, SEVERITY_ORDER, SEVERITY_STYLE } from "@/lib/format";
 import type { Dashboard } from "@/lib/types";
 
+import { AnimatedNumber } from "./animated-number";
 import { ExposureGauge, UnitDots } from "./insight-charts";
 import { Card } from "./ui/card";
 
@@ -30,7 +31,7 @@ export function KpiRow({ data }: { data: Dashboard }) {
     <Card className="grid grid-cols-1 lg:grid-cols-4">
       <Metric
         label="Risk exposure index"
-        value={k.exposure_index.toFixed(1)}
+        value={<AnimatedNumber value={k.exposure_index} format={(n) => n.toFixed(1)} />}
         visual={<ExposureGauge value={k.exposure_index} />}
         sub={
           <>
@@ -51,13 +52,17 @@ export function KpiRow({ data }: { data: Dashboard }) {
       />
       <Metric
         label="Open risks"
-        value={<span className={k.active_leak_risks > 0 ? "text-negative" : undefined}>{k.active_leak_risks}</span>}
+        value={
+          <span className={k.active_leak_risks > 0 ? "text-negative" : undefined}>
+            <AnimatedNumber value={k.active_leak_risks} />
+          </span>
+        }
         sub="Open incidents"
         visual={<UnitDots label={`${k.active_leak_risks} open risks`} marks={Array.from({ length: k.active_leak_risks }, () => "bg-sev-critical")} />}
       />
       <Metric
         label="Shadow AI tools"
-        value={k.shadow_ai_apps}
+        value={<AnimatedNumber value={k.shadow_ai_apps} />}
         sub={
           // The dots beside this show severity by colour, so the words carry it too.
           <>
@@ -74,7 +79,11 @@ export function KpiRow({ data }: { data: Dashboard }) {
       />
       <Metric
         label="Pending reviews"
-        value={<span className={k.pending_approvals > 0 ? "text-warning" : undefined}>{k.pending_approvals}</span>}
+        value={
+          <span className={k.pending_approvals > 0 ? "text-warning" : undefined}>
+            <AnimatedNumber value={k.pending_approvals} />
+          </span>
+        }
         sub={k.pending_approvals > 0 ? "Blocks waiting for an admin" : "Nothing waiting for an admin"}
         visual={<UnitDots label={`${k.pending_approvals} pending reviews`} marks={Array.from({ length: k.pending_approvals }, () => "bg-sev-high")} />}
       />

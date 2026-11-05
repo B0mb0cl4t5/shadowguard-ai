@@ -45,10 +45,38 @@ test("no decorative glass, glow, blur, pulsing or icon tiles", () => {
   assert.deepEqual(offenders(/\b(?:glass|aurora|shadow-[\w-]+|backdrop-blur[\w-]*|animate-pulse[\w-]*|TONE_STYLE\[meta)\b/), []);
 });
 
-test("nothing performs an entrance except a dialog, toast or error answering an action", () => {
+test("only charts draw in; otherwise nothing performs an entrance except a dialog, toast, error or new traffic row", () => {
   // scale-in is only for a sign-in error. rise-in and slide-in are for surfaces someone just opened.
   const allowed = new Set(["components/login-form.tsx"]);
   assert.deepEqual(offenders(/animate-scale-in/, files.filter((f) => !allowed.has(f.name))), []);
+  // Drawing in shows data arriving, so it belongs to the charts and nowhere else.
+  const charts = new Set(["components/charts.tsx", "components/insight-charts.tsx", "components/traffic-map.tsx"]);
+  assert.deepEqual(offenders(/animate-(?:wipe|grow-up|grow-x|pop|sweep|needle|draw)\b/, files.filter((f) => !charts.has(f.name))), []);
+  assert.deepEqual(offenders(/animate-arrive\b/, files.filter((f) => f.name !== "components/live-traffic.tsx")), []);
+});
+
+test("no animation repeats on a timer of its own", () => {
+  const config = readFileSync(join(frontend, "tailwind.config.ts"), "utf8");
+  assert.doesNotMatch(config.slice(config.indexOf("animation: {")), /infinite/);
+});
+
+test("the connection's liveness is driven by the server's answers", () => {
+  // The Live dot beats, and the next-check line restarts, once per answer: a new key replays the animation.
+  const shell = files.find((f) => f.name === "components/dashboard-shell.tsx");
+  assert.match(shell.text, /key=\{live\.beat\}[^>]*animate-beat/);
+  assert.match(shell.text, /beat: current\.beat \+ 1/);
+  assert.match(shell.text, /beat=\{stale \? null : live\.beat\}/);
+  const traffic = files.find((f) => f.name === "components/live-traffic.tsx");
+  assert.match(traffic.text, /key=\{beat\}[^>]*animate-countdown/);
+});
+
+test("switching motion off also stops stagger delays and rolling figures", () => {
+  const css = files.find((f) => f.name === "app/globals.css");
+  assert.match(css.text, /\.reduce-motion \*::after \{[^}]*animation-delay: 0ms !important/);
+  assert.match(css.text, /prefers-reduced-motion: reduce\) \{[^}]*animation-delay: 0ms !important/);
+  const roll = files.find((f) => f.name === "components/animated-number.tsx");
+  assert.match(roll.text, /reduce-motion/);
+  assert.match(roll.text, /prefers-reduced-motion: reduce/);
 });
 
 test("badges and data marks don't grow on hover", () => {
