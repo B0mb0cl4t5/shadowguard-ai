@@ -63,9 +63,8 @@ class SlidingWindowLimiter:
     """In-memory sliding-window limiter.
 
     Serverless caveat: each warm Vercel instance has its own memory, so this
-    limits per instance, not globally. For a hard global limit, back it with
-    Upstash Redis / Vercel KV. It still stops a single client hammering a warm
-    instance, which is the common case.
+    limits per instance, not globally (see SECURITY.md, known limitations). It
+    still stops a single client hammering a warm instance, which is the common case.
     """
 
     def __init__(self) -> None:
@@ -102,10 +101,13 @@ limiter = SlidingWindowLimiter()
 
 
 def client_ip(request: Request) -> str:
-    # On Vercel, x-forwarded-for is set by the platform edge; take the first hop.
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()[:64]
+    settings = get_settings()
+    # Only trust X-Forwarded-For when running behind a known proxy (TRUST_PROXY=true).
+    # Otherwise a client can forge the first hop and evade per-IP rate limiting.
+    if settings.trust_proxy:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()[:64]
     return request.client.host if request.client else "unknown"
 
 

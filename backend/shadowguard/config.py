@@ -61,6 +61,7 @@ class Settings:
     allowed_origins: tuple[str, ...] = ()
     rate_limit_per_minute: int = 120
     exposure_window_days: int = 7
+    trust_proxy: bool = False
     teams_webhook_url: str | None = None
     approved_regions: tuple[str, ...] = ("MY", "SG", "EU")
 
@@ -71,6 +72,13 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """Read settings from environment once and cache them.
+
+    Because the result is cached, environment variables must be set **before**
+    the first import of this module. Changing ``DATABASE_URL`` (or any other
+    setting) after import has no effect — this is why DB integration tests skip
+    when ``TEST_DATABASE_URL`` is unset (``conftest.py`` sets it before import).
+    """
     origins = tuple(
         o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip().startswith("https://")
     )
@@ -85,5 +93,6 @@ def get_settings() -> Settings:
         allowed_origins=origins,
         rate_limit_per_minute=_int("RATE_LIMIT_PER_MINUTE", 120, 10, 10_000),
         exposure_window_days=_int("EXPOSURE_WINDOW_DAYS", 7, 1, 30),
+        trust_proxy=_bool("TRUST_PROXY", False),
         teams_webhook_url=webhook,
     )

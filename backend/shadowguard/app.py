@@ -127,6 +127,17 @@ def get_dashboard(_: Principal = Depends(viewer)):
         return service.dashboard(conn)
 
 
+@app.get("/api/v1/live")
+def get_live(
+    _: Principal = Depends(viewer),
+    after_id: Annotated[int, Query(ge=0, le=9_000_000_000_000_000_000)] = 0,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+):
+    """Cheap enough to poll every few seconds: the newest traffic, and a revision that says when to refetch the rest."""
+    with get_connection() as conn:
+        return repo.live_feed(conn, after_id, limit)
+
+
 @app.get("/api/v1/apps")
 def list_apps(
     _: Principal = Depends(viewer),
@@ -135,7 +146,8 @@ def list_apps(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ):
     with get_connection() as conn:
-        return {"apps": repo.shadow_apps(conn, severity=severity, sort=sort, limit=limit)}
+        return {"apps": repo.shadow_apps(conn, severity=severity, sort=sort, limit=limit,
+                                         window_days=get_settings().exposure_window_days)}
 
 
 @app.get("/api/v1/vendors/{vendor_id}")

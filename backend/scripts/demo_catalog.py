@@ -7,6 +7,8 @@ real vendors. Departments model a typical Malaysian university.
 
 from __future__ import annotations
 
+import hashlib
+
 DEPARTMENTS: list[tuple[str, str]] = [
     ("Examinations & Assessment", "student_records"),
     ("Student Affairs", "student_records"),
@@ -139,6 +141,13 @@ USAGE: list[tuple[str, str, int, int, int, int]] = [
 ]
 
 # Ordinary web traffic that matches no catalogued app (stored with app_id NULL).
+
+def demo_dest_ip(domain: str, rng) -> str:
+    """One of three addresses per tool, from 203.0.113.0/24: reserved for examples, so no real host is implicated."""
+    base = 1 + hashlib.sha256(domain.encode()).digest()[0] % 80 * 3
+    return f"203.0.113.{base + rng.randint(0, 2)}"
+
+
 BACKGROUND_DOMAINS = ["fonts.gstatic.com", "cdn.jsdelivr.net", "update.campus-lms.example"]
 
 # Seeded human decisions: (domain, department, decision, at day, note)

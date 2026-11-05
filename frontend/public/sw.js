@@ -44,7 +44,7 @@ self.addEventListener("fetch", (event) => {
         () =>
           new Response(
             "<!doctype html><meta name=viewport content='width=device-width'><title>Offline</title>" +
-              "<body style='background:#05070d;color:#cbd5e1;font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0'>" +
+              "<body style='background:#0b1120;color:#cbd5e1;font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0'>" +
               "<p>ShadowGuard is offline. Reconnect to see live risk data.</p>",
             { headers: { "Content-Type": "text/html; charset=utf-8" } },
           ),

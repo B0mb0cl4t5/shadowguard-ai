@@ -28,6 +28,10 @@ from dataclasses import dataclass, field
 from .scoring import VendorPosture
 
 MAX_POLICY_CHARS = 200_000
+# Real privacy policies run to tens of thousands of characters, and keyword rules
+# misread them (a rights section that mentions the EEA is not a storage location).
+# Above this length, a rules-only reading is never 'verified'.
+LONG_POLICY_CHARS = 8_000
 MAX_QUOTE_CHARS = 400
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
@@ -132,13 +136,16 @@ class ExtractionResult:
     conflicts: list[str] = field(default_factory=list)
     disagreements: list[str] = field(default_factory=list)
     extractor: str = "rules"
+    long_rules_only: bool = False
 
     @property
     def verified(self) -> bool:
         """Deterministic fallback: any discarded claim, internal conflict, extractor
         disagreement or injection attempt makes the vendor 'unverified', which floors
-        its score at High."""
-        return not (self.discarded or self.conflicts or self.disagreements or self.injection_flags)
+        its score at High. So does a long policy read by keyword rules alone: the
+        quote check proves a sentence exists, not that it answers the question."""
+        return not (self.discarded or self.conflicts or self.disagreements or self.injection_flags
+                    or self.long_rules_only)
 
     def verification_notes(self) -> list[str]:
         notes = [f"Claim for '{c.field}' had no exact match in the policy and was discarded" for c in self.discarded]
@@ -146,6 +153,9 @@ class ExtractionResult:
         notes += [f"Gemini and the rule-based extractor disagree on '{f}'" for f in self.disagreements]
         if self.injection_flags:
             notes.append(f"{len(self.injection_flags)} sentence(s) read as instructions to an AI reviewer")
+        if self.long_rules_only:
+            notes.append("A long policy was read by keyword rules only, which can misread it. "
+                         "Set GEMINI_API_KEY for a reliable reading.")
         return notes
 
     def evidence_dicts(self) -> list[dict]:
@@ -405,4 +415,5 @@ def analyse_policy(policy_text: str, llm_extractor=None) -> ExtractionResult:
         conflicts=find_conflicts(clean),
         disagreements=disagreements,
         extractor=extractor,
+        long_rules_only=extractor == "rules" and len(text) > LONG_POLICY_CHARS,
     )

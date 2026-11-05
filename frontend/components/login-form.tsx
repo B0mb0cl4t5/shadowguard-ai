@@ -2,6 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 
+import { Button } from "./ui/button";
+import { Notice } from "./ui/card";
+import { Input } from "./ui/input";
+
 export function LoginForm({ next }: { next: string }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -34,10 +38,10 @@ export function LoginForm({ next }: { next: string }) {
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <div>
-        <label htmlFor="username" className="eyebrow mb-2 block">
+        <label htmlFor="username" className="mb-1.5 block text-xs text-ink2">
           Username
         </label>
-        <input
+        <Input
           id="username"
           name="username"
           type="text"
@@ -48,14 +52,13 @@ export function LoginForm({ next }: { next: string }) {
           maxLength={64}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-[16px] text-white placeholder-slate-500 transition-colors focus:border-signal/60 sm:text-sm"
         />
       </div>
       <div>
-        <label htmlFor="password" className="eyebrow mb-2 block">
+        <label htmlFor="password" className="mb-1.5 block text-xs text-ink2">
           Password
         </label>
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
@@ -65,18 +68,12 @@ export function LoginForm({ next }: { next: string }) {
           maxLength={128}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-[16px] text-white placeholder-slate-500 transition-colors focus:border-signal/60 sm:text-sm"
-          placeholder="••••••••••••"
         />
       </div>
-      {error && (
-        <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-          {error}
-        </p>
-      )}
-      <button type="submit" className="btn-signal h-11 w-full" disabled={busy || !username.trim() || password.length < 8}>
+      {error && <Notice className="animate-scale-in">{error}</Notice>}
+      <Button type="submit" variant="primary" className="w-full" disabled={busy || !username.trim() || password.length < 8}>
         {busy ? "Signing in…" : "Sign in"}
-      </button>
+      </Button>
     </form>
   );
 }

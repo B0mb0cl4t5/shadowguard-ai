@@ -42,9 +42,13 @@ class Factor:
     label: str
     points: float
     note: str
+    max_points: float | None = None
 
     def as_dict(self) -> dict:
-        return {"label": self.label, "points": round(self.points, 2), "note": self.note}
+        result = {"label": self.label, "points": round(self.points, 2), "note": self.note}
+        if self.max_points is not None:
+            result["max_points"] = round(self.max_points, 2)
+        return result
 
 
 @dataclass(frozen=True)
@@ -91,7 +95,7 @@ def vendor_posture(p: VendorPosture, approved_regions: tuple[str, ...] = ("MY", 
         "yes": "Policy states inputs may be used to train or improve models",
         "no": "Policy states inputs are not used for training",
         "unknown": "Policy is silent on training; treated as partial risk",
-    }[p.trains_on_inputs]))
+    }[p.trains_on_inputs], max_points=35))
 
     if p.retention_indefinite:
         retention, note = 20, "Data kept indefinitely or 'as long as necessary'"
@@ -103,14 +107,14 @@ def vendor_posture(p: VendorPosture, approved_regions: tuple[str, ...] = ("MY", 
         retention, note = 8, f"Retained for {p.retention_days} days"
     else:
         retention, note = 0, f"Retained for {p.retention_days} days or less"
-    factors.append(Factor("Data retention", retention, note))
+    factors.append(Factor("Data retention", retention, note, max_points=20))
 
     sharing = {"yes": 20, "unknown": 10, "no": 0}[p.third_party_sharing]
     factors.append(Factor("Third-party sharing", sharing, {
         "yes": "Policy permits sharing with partners or advertisers",
         "no": "Policy rules out selling or sharing data",
         "unknown": "Policy does not say whether data is shared",
-    }[p.third_party_sharing]))
+    }[p.third_party_sharing], max_points=20))
 
     loc = p.data_location
     if loc == "MY":
@@ -121,14 +125,14 @@ def vendor_posture(p: VendorPosture, approved_regions: tuple[str, ...] = ("MY", 
         location, note = 10, "Storage location not stated"
     else:
         location, note = 8, f"Stored outside approved regions ({loc})"
-    factors.append(Factor("Data location", location, note))
+    factors.append(Factor("Data location", location, note, max_points=10))
 
     opt = {"no": 15, "unknown": 8, "yes": 0}[p.opt_out]
     factors.append(Factor("Opt-out available", opt, {
         "yes": "Users or organisations can opt out of training/data use",
         "no": "Policy states users cannot opt out",
         "unknown": "No opt-out mechanism described",
-    }[p.opt_out]))
+    }[p.opt_out], max_points=15))
 
     total = sum(f.points for f in factors)
     if not verified and total < UNVERIFIED_FLOOR:

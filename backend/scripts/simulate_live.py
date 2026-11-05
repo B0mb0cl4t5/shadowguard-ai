@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from demo_catalog import USAGE  # noqa: E402
+from demo_catalog import USAGE, demo_dest_ip  # noqa: E402
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -45,6 +45,8 @@ def make_event(domain: str, dept: str, pool: int, rng: random.Random) -> dict:
         "user_hash": user,
         "domain": domain,
         "bytes_out": int(rng.lognormvariate(11, 1.3)),
+        "bytes_in": int(rng.lognormvariate(10.2, 1.2)),
+        "dest_ip": demo_dest_ip(domain, rng),
         "source": "proxy",
     }
 

@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from demo_catalog import (  # noqa: E402
     APPS, BACKGROUND_DOMAINS, CURRENT_POLICY_DAYS_AGO, DECISIONS, DEPARTMENTS, POLICY_HISTORY, USAGE, VENDORS,
+    demo_dest_ip,
 )
 from shadowguard.idp import analyse_policy  # noqa: E402
 from shadowguard.pipeline import (  # noqa: E402
@@ -164,7 +165,10 @@ def main() -> None:
             )
 
     # ---- synthetic telemetry, metadata only
-    events: list[tuple[int, int, str, str, int | None, int, str]] = []  # ago, dept, user, domain, app, bytes, src
+    # ago, dept, user, domain, app, bytes out, src, bytes in, dest ip
+    events: list[tuple[int, int, str, str, int | None, int, str, int, str | None]] = []
+    # Its own generator, so adding these columns doesn't move any other number in the seed.
+    net_rng = random.Random(2027)
     for domain, dept, mean, pool, first_day, last_day in USAGE:
         app = app_by_domain[domain]
         for day in range(first_day, last_day - 1, -1):
@@ -174,13 +178,14 @@ def main() -> None:
                 events.append((
                     seconds_ago, dept_ids[dept], user_hash(dept, rng.randint(1, pool)), sub + domain,
                     app_ids[app[0]], int(rng.lognormvariate(11, 1.3)), rng.choice(["proxy", "proxy", "dns"]),
+                    int(net_rng.lognormvariate(10.2, 1.2)), demo_dest_ip(domain, net_rng),
                 ))
     for day in range(HISTORY_DAYS - 1, -1, -1):
         for _ in range(rng.randint(4, 8)):
             dept = rng.choice(DEPARTMENTS)[0]
             events.append((day * DAY + rng.randint(60, DAY - 60), dept_ids[dept],
                            user_hash(dept, rng.randint(1, 12)), rng.choice(BACKGROUND_DOMAINS),
-                           None, rng.randint(500, 40_000), "proxy"))
+                           None, rng.randint(500, 40_000), "proxy", net_rng.randint(500, 40_000), None))
     events.sort(key=lambda e: -e[0])
 
     # ---- replay stages 3 and 4, one evaluation per day
@@ -223,7 +228,7 @@ def main() -> None:
                     rt.last_rejected = act_dt
                 rt.pending_block = None
 
-            window = [(as_dt(e[0]), e[2], e[5]) for e in events
+            window = [(as_dt(e[0]), e[2], e[5], e[7]) for e in events
                       if e[4] == app_id and e[1] == dept_id and eval_ago <= e[0] <= eval_ago + WINDOW_DAYS * DAY]
             agg = aggregate(window)
             if agg is None:
@@ -306,9 +311,10 @@ def main() -> None:
         if a[5]:
             out.append(f"UPDATE saas_apps SET approved_alternative_id = {app_ids[a[5]]} WHERE id = {app_ids[a[0]]};")
 
-    out += ["", "INSERT INTO telemetry_events (observed_at, department_id, user_hash, domain, app_id, bytes_out, source) VALUES"]
+    out += ["", "INSERT INTO telemetry_events (observed_at, department_id, user_hash, domain, app_id, bytes_out, bytes_in, dest_ip, source) VALUES"]
     out.append(",\n".join(
-        f"({ts(e[0])}, {e[1]}, {q(e[2])}, {q(e[3])}, {e[4] if e[4] is not None else 'NULL'}, {e[5]}, {q(e[6])})"
+        f"({ts(e[0])}, {e[1]}, {q(e[2])}, {q(e[3])}, {e[4] if e[4] is not None else 'NULL'}, {e[5]}, {e[7]}, "
+        f"{q(e[8]) + '::inet' if e[8] else 'NULL'}, {q(e[6])})"
         for e in events) + ";")
 
     exp_rows = []
@@ -317,11 +323,11 @@ def main() -> None:
             continue
         x = rt.exposure
         exp_rows.append(
-            f"({app_id}, {dept_id}, {x['agg'].users}, {x['agg'].events}, {x['agg'].bytes_out}, "
+            f"({app_id}, {dept_id}, {x['agg'].users}, {x['agg'].events}, {x['agg'].bytes_out}, {x['agg'].bytes_in}, "
             f"{ts(ago(rt.first_seen))}, {ts(ago(x['agg'].last_seen))}, {x['score']}, {q(x['severity'])}, "
             f"{jq(x['factors'])}, {q(rt.status)}, NOW())"
         )
-    out += ["", "INSERT INTO app_exposure (app_id, department_id, users, events, bytes_out, first_seen, last_seen,",
+    out += ["", "INSERT INTO app_exposure (app_id, department_id, users, events, bytes_out, bytes_in, first_seen, last_seen,",
             "    exposure_score, severity, factors, status, updated_at) VALUES", ",\n".join(exp_rows) + ";"]
 
     if incidents:

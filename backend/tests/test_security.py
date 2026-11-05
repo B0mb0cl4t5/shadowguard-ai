@@ -1,5 +1,6 @@
 """Security tests that need no database."""
 
+import inspect
 import logging
 import socket
 from datetime import datetime, timedelta, timezone
@@ -8,11 +9,12 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import headers
+from shadowguard import repository as repo
 from shadowguard.config import _parse_api_keys
 from shadowguard.db import DatabaseNotConfigured, validate_database_url
 from shadowguard.fetcher import UnsafeURLError, html_to_text, validate_url
 from shadowguard.models import DecisionRequest, TelemetryEvent
-from shadowguard.pipeline import PairState, match_domain, plan_response
+from shadowguard.pipeline import PairState, aggregate, match_domain, plan_response
 from shadowguard.security import AUTH_FAILURES_PER_MINUTE
 from simulate_live import is_safe_api_url
 
@@ -126,11 +128,39 @@ def event(**over):
     {"observed_at": datetime(2026, 1, 1)},                   # naive datetime
     {"source": "smtp"},
     {"bytes_out": -1},
+    {"bytes_in": -1},
     {"extra_field": "x"},                                   # mass assignment
+    {"source_ip": "8.8.8.8"},                               # a client's address is never accepted
+    {"dest_ip": "10.0.0.5"},                                # an internal address could identify a person
+    {"dest_ip": "192.168.1.20"},
+    {"dest_ip": "127.0.0.1"},
+    {"dest_ip": "169.254.169.254"},
+    {"dest_ip": "100.64.0.1"},
+    {"dest_ip": "::ffff:10.0.0.5"},
+    {"dest_ip": "fe80::1"},
+    {"dest_ip": "224.0.0.1"},
+    {"dest_ip": "8.8.8.8:443"},
+    {"dest_ip": "summarix.ai"},
 ])
 def test_telemetry_validation_rejects(bad):
     with pytest.raises(ValidationError):
         TelemetryEvent(**event(**bad))
+
+
+@pytest.mark.parametrize("ip", ["8.8.8.8", "203.0.113.7", "2606:4700:4700::1111"])
+def test_public_and_example_destination_addresses_are_accepted(ip):
+    assert TelemetryEvent(**event(dest_ip=ip)).dest_ip == ip
+
+
+def test_collectors_that_send_neither_new_field_keep_working():
+    ev = TelemetryEvent(**event())
+    assert ev.bytes_in == 0 and ev.dest_ip is None
+
+
+def test_aggregate_adds_up_both_directions():
+    now = datetime.now(timezone.utc)
+    agg = aggregate([(now, "a", 10, 1), (now, "b", 20, 2)])
+    assert (agg.bytes_out, agg.bytes_in, agg.users) == (30, 3, 2)
 
 
 def test_decision_note_strips_control_characters():
@@ -213,6 +243,14 @@ def test_viewer_cannot_approve(client):
     assert r.status_code == 403
 
 
+def test_live_feed_needs_a_key(client):
+    assert client.get("/api/v1/live").status_code == 401
+
+
+def test_live_feed_never_selects_the_user_hash():
+    assert "user_hash" not in inspect.getsource(repo.live_feed)
+
+
 def test_ingest_key_cannot_read_dashboard(client):
     assert client.get("/api/v1/dashboard", headers=headers("ingest")).status_code == 403
 
@@ -250,6 +288,25 @@ def test_rejected_block_not_reproposed_for_a_week():
     assert not plan_response("critical", False, state, now).propose_block
     state = PairState(has_open_incident=True, last_block_rejected_at=now - timedelta(days=8))
     assert plan_response("critical", False, state, now).propose_block
+
+
+def test_escalation_writes_a_fresh_ticket_but_keeps_one_incident():
+    now = datetime.now(timezone.utc)
+    rising = plan_response("critical", False, PairState(has_open_incident=True, previous_severity="high"), now)
+    assert rising.open_ticket and not rising.open_incident  # the open incident is updated, not duplicated
+    steady = plan_response("critical", False, PairState(has_open_incident=True, previous_severity="critical"), now)
+    assert not steady.open_ticket
+    falling = plan_response("high", False, PairState(has_open_incident=True, previous_severity="critical"), now)
+    assert not falling.open_ticket
+
+
+def test_rescoring_stays_on_the_requests_connection():
+    # Events and policies written in this request are uncommitted, so another connection
+    # (a worker thread) would score without them. Keep scoring on the caller's connection.
+    from shadowguard import service
+
+    source = inspect.getsource(service)
+    assert "ThreadPoolExecutor" not in source and "get_connection" not in source
 
 
 def test_domain_matching_does_not_accept_lookalikes():

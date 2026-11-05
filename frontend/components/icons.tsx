@@ -113,6 +113,34 @@ export const CheckIcon = (p: IconProps) => (
   </svg>
 );
 
+export const InfoIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M12 4.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z" />
+    <path d="M12 10.5h.01M12 15h.01" />
+  </svg>
+);
+
+export const CompareIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="5" width="7" height="14" rx="1.5" />
+    <rect x="13.5" y="5" width="7" height="14" rx="1.5" />
+  </svg>
+);
+
+export const MotionIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 12h4l3 7 4-14 3 7h4" />
+  </svg>
+);
+
+export const PrinterIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M7 8.5V3.5h10v5" />
+    <path d="M7 17H5a1.5 1.5 0 0 1-1.5-1.5v-5.5A1.5 1.5 0 0 1 5 8.5h14a1.5 1.5 0 0 1 1.5 1.5v5.5A1.5 1.5 0 0 1 19 17h-2" />
+    <path d="M7 14h10v6.5H7z" />
+  </svg>
+);
+
 export const LogoutIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M14.5 4.5h3a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-3" />

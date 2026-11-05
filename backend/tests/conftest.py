@@ -24,6 +24,7 @@ os.environ["SHADOWGUARD_ENV"] = "test"
 os.environ["RATE_LIMIT_PER_MINUTE"] = "10000"
 os.environ.pop("GEMINI_API_KEY", None)
 os.environ.pop("TEAMS_WEBHOOK_URL", None)
+os.environ["TRUST_PROXY"] = "true"  # Test client is the trusted proxy; X-Forwarded-For simulates client IPs
 TEST_DB = os.getenv("TEST_DATABASE_URL", "")
 os.environ["DATABASE_URL"] = TEST_DB
 

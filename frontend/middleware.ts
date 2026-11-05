@@ -11,7 +11,8 @@ import { sessionCookieName, verifySessionToken } from "./lib/session";
  *    flow requires a valid signed session. Route handlers re-verify too.
  */
 
-const PUBLIC_PATHS = new Set(["/login", "/api/auth/login"]);
+// /api/auth/demo answers 404 unless DEMO_SIGN_IN is set (lib/demo-mode.ts).
+const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/api/auth/demo"]);
 
 function buildCsp(nonce: string): string {
   const dev = process.env.NODE_ENV !== "production";

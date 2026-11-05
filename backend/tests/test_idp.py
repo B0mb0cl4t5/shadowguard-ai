@@ -215,6 +215,23 @@ def test_llm_claim_with_invalid_value_is_discarded():
     assert result.posture.data_location == "unknown"
 
 
+def test_a_long_policy_read_by_rules_alone_is_never_verified():
+    # Real policies are tens of thousands of characters, and keyword rules misread them:
+    # a rights section that mentions the EEA once came back as "stored in the EU".
+    filler = " ".join(f"Section {i} describes our general practices for keeping accounts secure." for i in range(200))
+    long_policy = "We do not use your content to train our models. Data is stored in Singapore. " + filler
+    result = analyse_policy(long_policy)
+    assert len(long_policy) > 8_000 and not result.verified
+    assert any("keyword rules only" in note for note in result.verification_notes())
+
+
+def test_a_long_policy_read_by_gemini_can_still_be_verified():
+    filler = " ".join(f"Section {i} describes our general practices for keeping accounts secure." for i in range(200))
+    long_policy = "We do not use your content to train our models. " + filler
+    claim = Claim("trains_on_inputs", "no", "We do not use your content to train our models.")
+    assert analyse_policy(long_policy, llm_extractor=lambda text: [claim]).verified
+
+
 def test_llm_failure_falls_back_to_rules():
     def broken(_clean):
         raise RuntimeError("quota exceeded")

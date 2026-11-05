@@ -39,12 +39,13 @@ class PairAggregate:
     users: int
     events: int
     bytes_out: int
+    bytes_in: int
     first_seen: datetime
     last_seen: datetime
 
 
-def aggregate(rows: list[tuple[datetime, str, int]]) -> PairAggregate | None:
-    """rows = (observed_at, user_hash, bytes_out) for one (app, department) pair."""
+def aggregate(rows: list[tuple[datetime, str, int, int]]) -> PairAggregate | None:
+    """rows = (observed_at, user_hash, bytes_out, bytes_in) for one (app, department) pair."""
     if not rows:
         return None
     times = [r[0] for r in rows]
@@ -52,9 +53,18 @@ def aggregate(rows: list[tuple[datetime, str, int]]) -> PairAggregate | None:
         users=len({r[1] for r in rows}),
         events=len(rows),
         bytes_out=sum(r[2] for r in rows),
+        bytes_in=sum(r[3] for r in rows),
         first_seen=min(times),
         last_seen=max(times),
     )
+
+
+SEVERITY_ORDER = ("low", "moderate", "high", "critical")
+
+
+def severity_rank(severity: str) -> int:
+    """Numeric rank so we can tell whether a severity has escalated."""
+    return SEVERITY_ORDER.index(severity) if severity in SEVERITY_ORDER else -1
 
 
 @dataclass(frozen=True)
@@ -63,6 +73,7 @@ class PairState:
     last_nudge_at: datetime | None = None
     has_pending_block: bool = False
     last_block_rejected_at: datetime | None = None
+    previous_severity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +92,11 @@ def plan_response(severity: Severity, approved: bool, state: PairState, now: dat
     nudge — an informational message. Blocking a domain is never automatic; it
     is proposed and waits for a human admin's approval. The automatic actions
     are soft: a nudge to staff and a pre-filled IT risk-assessment ticket.
+
+    A ticket is written for every new incident, and again whenever the severity
+    has risen since the last reading, so High climbing to Critical gets a fresh
+    ticket instead of sitting under the old one. An escalation doesn't open a
+    second incident (one open incident per pair); the existing one is updated.
     """
     if approved:
         return PlannedResponse(resolve_incident=state.has_open_incident)
@@ -92,10 +108,13 @@ def plan_response(severity: Severity, approved: bool, state: PairState, now: dat
         state.last_block_rejected_at is not None
         and now - state.last_block_rejected_at < REJECTION_QUIET_PERIOD
     )
+    escalated = state.previous_severity is not None and severity_rank(severity) > severity_rank(state.previous_severity)
+    freshly_open = not state.has_open_incident
     return PlannedResponse(
-        open_incident=not state.has_open_incident,
-        # A pre-filled risk-assessment ticket accompanies every new incident.
-        open_ticket=not state.has_open_incident,
+        open_incident=freshly_open,
+        # A pre-filled risk-assessment ticket accompanies every new incident,
+        # and every escalation of an existing one.
+        open_ticket=freshly_open or escalated,
         nudge=nudge_due,
         propose_block=severity == "critical" and not state.has_pending_block and not recently_rejected,
     )

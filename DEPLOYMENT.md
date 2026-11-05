@@ -29,6 +29,17 @@ Allow about 20 minutes end to end.
 
 **Using Supabase instead:** Project Settings → Database → **Connection pooling** (transaction mode, port 6543). Append `?sslmode=require`. Everything else is identical.
 
+### Upgrading a database that's already running
+
+Run this **before** deploying code that needs the new columns, or the dashboard will fail until you do. It keeps your data and is safe to run twice. Use the owner's connection string, not the app role's.
+
+```bash
+export DATABASE_URL="<the owner's pooled string>"
+python backend/scripts/migrate_db.py
+```
+
+The same command adds the real AI tools (`002_real_ai_tools.sql`), so traffic from the laptop collector is recognised. Older events have no inbound bytes or destination IP, because those were never recorded. They fill in as your collector sends `bytes_in` and `dest_ip`.
+
 ### Recommended: a least-privilege role for the app (OWASP A01/A05)
 
 Run this once as the owner in the Neon or Supabase SQL editor, then use this role's credentials in `DATABASE_URL` on Vercel. The app can then never drop tables or rewrite the audit trail, even if compromised.
@@ -98,8 +109,14 @@ The usernames are `admin` and `viewer` unless you set `DASHBOARD_ADMIN_USERNAME`
    | `SESSION_SECRET` | output of `npm run gen-secret` |
    | `TEAMS_WEBHOOK_URL` | optional |
    | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
+   | `TRUST_PROXY` | `true` on Vercel (see below) |
+   | `DEMO_SIGN_IN` | optional: `admin` or `viewer` adds a one-click "Open the demo" button. **Anyone with the link can then sign in**, so set it only while recording a demo, then delete it and redeploy |
 
    Do **not** set `SHADOWGUARD_API_URL`. The service binding generates it.
+
+   **`TRUST_PROXY`:** the backend rate-limits and locks out by client IP. With `TRUST_PROXY=true` it reads the IP from `X-Forwarded-For`, which is only safe where the platform sets that header itself and discards whatever the client sent. Vercel's request-header documentation says it does; confirm it for your plan. Without it, every request arrives from the platform's own address, so all callers share one rate limit, and 20 bad API keys from anyone lock everyone out for a minute.
+
+   **Policy fetching:** the backend fetches vendor privacy pages and refuses any host that resolves to a private address, but a DNS-rebinding attacker can change the answer between that check and the connection (`shadowguard/fetcher.py` states the residual risk; `backend/tests/test_fetcher.py` covers the check). To close it fully, send outbound requests through a forward proxy you run that applies the same rules (HTTPS on port 443, public addresses only).
 
 5. **Deploy**, open the URL, sign in as `admin` with the admin password.
 6. Check the routing:

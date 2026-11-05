@@ -3,8 +3,8 @@
 --
 -- Design notes (security-relevant):
 --   * Telemetry is METADATA ONLY: domain, department, timestamp, bytes out and
---     a pre-hashed user id. No URLs, no request bodies, no typed content. The
---     user_hash column is constrained to a 64-char hex digest so raw usernames
+--     in, the vendor's public IP and a pre-hashed user id. No client IPs, no
+--     URLs, no request bodies, no typed content. The user_hash column is constrained to a 64-char hex digest so raw usernames
 --     or emails cannot be stored here by mistake (OWASP A04 Insecure Design,
 --     privacy by design).
 --   * Every enumerated value is enforced with a CHECK constraint, so the
@@ -119,6 +119,8 @@ CREATE TABLE telemetry_events (
     domain         VARCHAR(253) NOT NULL,
     app_id         INTEGER      REFERENCES saas_apps(id) ON DELETE SET NULL,
     bytes_out      BIGINT       NOT NULL DEFAULT 0 CHECK (bytes_out >= 0),
+    bytes_in       BIGINT       NOT NULL DEFAULT 0 CHECK (bytes_in >= 0),
+    dest_ip        INET,
     source         VARCHAR(10)  NOT NULL CHECK (source IN ('proxy', 'dns', 'firewall')),
     ingested_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
@@ -135,6 +137,7 @@ CREATE TABLE app_exposure (
     users           INTEGER     NOT NULL CHECK (users >= 0),
     events          INTEGER     NOT NULL CHECK (events >= 0),
     bytes_out       BIGINT      NOT NULL DEFAULT 0 CHECK (bytes_out >= 0),
+    bytes_in        BIGINT      NOT NULL DEFAULT 0 CHECK (bytes_in >= 0),
     first_seen      TIMESTAMPTZ NOT NULL,
     last_seen       TIMESTAMPTZ NOT NULL,
     exposure_score  SMALLINT    NOT NULL CHECK (exposure_score BETWEEN 0 AND 100),

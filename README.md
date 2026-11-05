@@ -30,7 +30,7 @@ flowchart LR
 
 | Stage | What happens | Where in the code |
 |---|---|---|
-| **1 · Discover** | Proxy/DNS events (domain, department, time, *hashed* user id) are matched against a catalogue of AI services. No payloads, no URLs, no TLS interception. | `backend/shadowguard/pipeline.py` `match_domain` · `service.ingest_telemetry` |
+| **1 · Discover** | Proxy/DNS events (domain, department, time, bytes out and in, the vendor's IP, *hashed* user id) are matched against a catalogue of AI services. No payloads, no URLs, no TLS interception, no client IPs. | `backend/shadowguard/pipeline.py` `match_domain` · `service.ingest_telemetry` |
 | **2 · Read the terms** | The vendor's policy is screened for prompt injection, then five answers are extracted (training on inputs, retention, location, third-party sharing, opt-out). **Every answer must quote a whole sentence of the policy verbatim** or it is discarded. Uses Gemini when `GEMINI_API_KEY` is set, otherwise a deterministic rule-based extractor; both pass through the same guard. With Gemini on, the rule-based extractor also runs as an **independent cross-check**: if the two disagree on any answer, or only one of them has an answer, the vendor is Unverified. | `idp.py`, `gemini.py` |
 | **3 · Score** | Transparent rubric, 0–100. Vendor posture × department data sensitivity × usage spread. Every component is shown with the clause that triggered it. | `scoring.py` |
 | **4 · Respond** | High/Critical opens an incident, sends a nudge and pre-fills an IT risk ticket. Critical also *proposes* a domain block that waits for an admin. | `pipeline.plan_response`, `service._respond` |
@@ -75,7 +75,7 @@ shadowguard-ai/
 │   └── tests/                   118 tests (unit + PostgreSQL integration)
 ├── frontend/                    Next.js 15 (App Router, TypeScript, Tailwind) → Vercel
 │   ├── app/                     Pages + server route handlers (the browser never sees an API key)
-│   ├── components/              Glass UI: KPI tiles, gauge, trend, tables, drawer, log
+│   ├── components/              Screens, plus ui/ for the shared card, table, badge, button and input
 │   ├── lib/                     session signing, PBKDF2, backend client, guards
 │   ├── middleware.ts            Auth gate + per-request nonce CSP
 │   └── public/                  PWA icons + service worker
@@ -155,6 +155,24 @@ Open with the scenario: *a lecturer uploads a whole class's essays and marks int
 
 ---
 
+## Capturing real traffic from a laptop
+
+`collector/shadowguard_collector.py` is a small local web proxy (standard library only, nothing to install). A browser pointed at it is reported to ShadowGuard whenever it connects to a known AI tool, with the same metadata a university web proxy logs: the site, when, and the bytes each way. It never decrypts anything: for HTTPS a proxy only sees the site name. Other sites pass straight through and are not recorded. The account name is hashed on the laptop before anything is sent.
+
+```bash
+set SHADOWGUARD_INGEST_KEY=sg_ingest_...      # an 'ingest' key
+python collector/shadowguard_collector.py --api https://YOUR-SITE.vercel.app --department "Examinations & Assessment"
+start msedge --proxy-server=127.0.0.1:8899 --user-data-dir=%TEMP%\shadowguard-demo
+```
+
+The last line opens a separate Edge profile that uses the collector, so normal browsing is untouched. Open ChatGPT or Gemini in it, and within seconds the tool appears in *Live traffic* and on the map. `--dry-run` prints the events instead of sending them.
+
+The real tools it watches (ChatGPT, Gemini, Claude, Copilot, Perplexity, Grammarly, QuillBot, Otter.ai, DeepSeek, Gamma) are listed in `backend/scripts/real_catalog.py` and added to the database by `database/migrations/002_real_ai_tools.sql`. Each vendor starts **unread**: every answer unknown, scored as risky. An admin opens the tool and clicks **Fetch the latest policy**, and ShadowGuard downloads and reads the vendor's published policy. Some sites block automated downloads (OpenAI, QuillBot and Gamma did when tested); for those, copy the policy from a browser into the *Live policy test* box and choose **Save as this vendor's policy**.
+
+**Real policies need Gemini.** The rule-based reader matches keywords, which is fine for short policies but misreads long real ones (in testing it took a rights section that mentions the EEA as a storage location). A rules-only reading of any policy over 8,000 characters is therefore marked *Unverified* and scored as High. Set `GEMINI_API_KEY` for readings you can rely on.
+
+---
+
 ## Dashboard features
 
 - **⌘K / Ctrl K command menu** (also a *Search* button for touch devices): open any tool, review pending block proposals, filter by severity, sort, refresh, sign out. Fully keyboard-driven and screen-reader labelled. Reviewing a block opens the approval dialog; the menu never blocks directly.
@@ -173,7 +191,8 @@ All routes except `/api/health` need an `X-API-Key` header.
 | GET | `/api/v1/dashboard` | viewer, admin |
 | GET | `/api/v1/apps?severity=&sort=exposure\|users\|last_seen\|name&limit=` | viewer, admin |
 | GET | `/api/v1/vendors/{id}` | viewer, admin |
-| POST | `/api/v1/telemetry` `{events:[{observed_at, department, user_hash, domain, bytes_out, source}]}` | ingest, admin |
+| GET | `/api/v1/live?after_id=&limit=` newest traffic and a revision token, polled every few seconds (no user ids) | viewer, admin |
+| POST | `/api/v1/telemetry` `{events:[{observed_at, department, user_hash, domain, bytes_out, bytes_in, dest_ip, source}]}` | ingest, admin |
 | POST | `/api/v1/vendors/{id}/analyze` `{policy_text?, persist?}` or `{fetch:true}` (`persist:false` = dry run, nothing saved) | admin |
 | POST | `/api/v1/remediations/{id}/decision` `{decision:"approve"\|"reject", note?}` | admin |
 | POST | `/api/v1/pipeline/recompute` | admin |
@@ -188,7 +207,8 @@ Being explicit, because judges will ask:
 
 | Real | Simulated in this build |
 |---|---|
-| Discovery, aggregation, scoring, incidents, the full response logic | Telemetry is synthetic (`simulate_live.py`), not a live proxy feed |
+| Discovery, aggregation, scoring, incidents, the full response logic | The demo traffic and its vendors (Summarix, GradeSync…) are synthetic (`simulate_live.py`) |
+| Real visits to real AI tools, from one laptop, through the collector | Not a campus feed: a university would point the collector logic at its firewall or proxy logs instead |
 | Policy extraction, injection screening, quote verification, extractor cross-check (rule-based) | The Gemini path and its cross-check are implemented and unit-tested against a mocked API, but were not run against the live Gemini API |
 | Teams nudges, when `TEAMS_WEBHOOK_URL` is set | Without a webhook, nudges are logged as `simulated` |
 | Human approval / rejection with audit log | An approved block is recorded, not pushed to a firewall (FortiGate/proxy integration is the next step) |

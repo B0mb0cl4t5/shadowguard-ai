@@ -30,3 +30,11 @@ venv/
 Thumbs.db
 .idea/
 .vscode/
+
+# --- Design tooling working files ---
+.taste-skill/
+
+# Local-only notes and tool rules, kept off GitHub
+CLAUDE.md
+.clauderules
+AUDIT_REPORT.md

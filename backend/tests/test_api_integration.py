@@ -28,6 +28,22 @@ def test_dashboard_shape(client, seeded_db):
     assert all(a["name"] != "CampusAI Workspace" for a in d["apps"])  # approved tools aren't shadow AI
     grade = next(a for a in d["apps"] if a["name"] == "GradeSync Pro")
     assert grade["severity"] == "critical" and grade["alternative"] == "CampusAI Workspace"
+    # The traffic map draws on these: the policy's stated region and the outbound volume.
+    assert all(a["data_location"] in {"MY", "SG", "EU", "US", "OTHER", "unknown"} for a in d["apps"])
+    assert all(a["bytes_out"] > 0 and a["bytes_in"] > 0 for a in d["apps"])
+    assert all(ip["ip"].startswith("203.0.113.") for a in d["apps"] for ip in a["dest_ips"])
+    assert any(a["dest_ips"] for a in d["apps"])
+
+
+def test_live_feed_returns_newest_traffic_without_people(client, seeded_db):
+    r = client.get("/api/v1/live", headers=headers("viewer"))
+    assert r.status_code == 200
+    feed = r.json()
+    assert feed["events"] and feed["events"][0]["id"] > feed["events"][-1]["id"]
+    assert all("user_hash" not in e for e in feed["events"])
+    assert all(e["app"] != "CampusAI Workspace" for e in feed["events"])  # approved tools aren't shadow AI
+    latest = feed["latest_event_id"]
+    assert client.get(f"/api/v1/live?after_id={latest}", headers=headers("viewer")).json()["events"] == []
 
 
 def test_sql_injection_in_query_params_is_rejected(client, seeded_db):

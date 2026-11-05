@@ -47,7 +47,7 @@ def _is_public(addr: str) -> bool:
     return ip.is_global and not ip.is_multicast
 
 
-def validate_url(url: str, resolver=socket.getaddrinfo) -> str:
+def validate_url(url: str, resolver=None) -> str:
     parsed = urlparse(url)
     if parsed.scheme != "https":
         raise UnsafeURLError("Only https URLs are allowed")
@@ -58,6 +58,8 @@ def validate_url(url: str, resolver=socket.getaddrinfo) -> str:
     host = parsed.hostname
     if not host:
         raise UnsafeURLError("URL has no host")
+    if resolver is None:
+        resolver = socket.getaddrinfo
     try:
         infos = resolver(host, 443, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:

@@ -1,10 +1,43 @@
 export type Severity = "critical" | "high" | "moderate" | "low";
 export type Role = "viewer" | "admin";
+export type DataLocation = "MY" | "SG" | "EU" | "US" | "OTHER" | "unknown";
+
+/** One event in the live feed. It carries no user id, hashed or otherwise. */
+export interface LiveEvent {
+  id: number;
+  observed_at: string;
+  app_id: number;
+  app: string;
+  department: string;
+  bytes_out: number;
+  bytes_in: number;
+  dest_ip: string | null;
+  data_location: DataLocation;
+  severity: Severity | null;
+  score: number | null;
+}
+
+export interface LiveFeed {
+  /** Changes whenever the full dashboard would, so it is refetched only when it needs to be. */
+  revision: string;
+  latest_event_id: number;
+  policies_changed_at: string | null;
+  last_minute: { events: number; bytes_out: number; bytes_in: number };
+  events: LiveEvent[];
+}
+
+export interface DestinationIp {
+  ip: string;
+  bytes_out: number;
+  bytes_in: number;
+}
 
 export interface Factor {
   label: string;
   points: number;
   note: string;
+  /** Maximum possible points for this factor (from the backend rubric). */
+  max_points?: number;
 }
 
 export interface AppDepartment {
@@ -26,6 +59,14 @@ export interface ShadowApp {
   posture_score: number;
   trains_on_inputs: "yes" | "no" | "unknown";
   verification_status: "verified" | "unverified";
+  /** Where the vendor's privacy policy says data is stored. A stated region, not an IP lookup. */
+  data_location: DataLocation;
+  /** Bytes sent to this tool in the monitoring window. */
+  bytes_out: number;
+  /** Bytes received from it. Zero for a collector that doesn't report inbound traffic. */
+  bytes_in: number;
+  /** The vendor's busiest public addresses, largest first. Client addresses are never collected. */
+  dest_ips: DestinationIp[];
   alternative: string | null;
   /** Set when the vendor has more than one stored policy version (newest version's date). */
   policy_changed_at: string | null;
@@ -89,6 +130,8 @@ export interface Dashboard {
     pending_approvals: number;
     departments_affected: number;
   };
+  /** The configured exposure window in days (backend `EXPOSURE_WINDOW_DAYS`). */
+  exposure_window_days: number;
   severity_breakdown: Record<Severity, number>;
   trend: TrendPoint[];
   apps: ShadowApp[];

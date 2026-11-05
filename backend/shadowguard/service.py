@@ -26,6 +26,16 @@ from .scoring import VendorPosture, exposure, exposure_index, severity_for, vend
 POLICY_DISPLAY_CHARS = 50_000
 
 
+def recompute_pairs(conn: psycopg.Connection, pairs: list[tuple[int, int]]) -> int:
+    """Rescore pairs on the caller's connection. Returns total actions created.
+
+    Deliberately serial and on the same connection: the events or policy just written
+    are still uncommitted, so a pair scored on any other connection would miss them,
+    and one failure must roll the whole request back together.
+    """
+    return sum(recompute_pair(conn, a, d) for a, d in pairs)
+
+
 class NotFound(LookupError):
     pass
 
@@ -49,13 +59,15 @@ def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> 
         app_id = match_domain(ev.domain, domains)
         if app_id is None:
             unmatched += 1
-        else:
-            touched.add((app_id, dept["id"]))
-        rows.append((ev.observed_at, dept["id"], ev.user_hash, ev.domain, app_id, ev.bytes_out, ev.source))
+            continue
+        touched.add((app_id, dept["id"]))
+        rows.append((ev.observed_at, dept["id"], ev.user_hash, ev.domain, app_id, ev.bytes_out, ev.bytes_in,
+                     ev.dest_ip, ev.source))
     if rows:
         repo.insert_events(conn, rows)
-    actions = sum(recompute_pair(conn, a, d) for a, d in sorted(touched))
+    actions = recompute_pairs(conn, sorted(touched))
     if touched:
+        # Today's point on the trend chart comes from the snapshot, so it moves with live traffic.
         refresh_snapshot(conn)
     return {
         "accepted": len(rows),
@@ -81,15 +93,18 @@ def recompute_pair(conn: psycopg.Connection, app_id: int, department_id: int) ->
         return 0
     result = exposure(ctx["posture_score"], float(ctx["sensitivity"]), agg.users, ctx["approved"])
     severity = severity_for(result.score)
+    # Read before the upsert overwrites it, so an escalation can be told apart from a repeat.
+    previous_severity = repo.exposure_severity(conn, app_id, department_id)
     status = repo.upsert_exposure(conn, app_id, department_id, agg, result.score, severity,
                                   result.factors_as_dicts())
     if status != "open":
         # A human already mitigated or accepted this pair; don't re-alert on it.
         return 0
-    return _respond(conn, ctx, severity, result.score, agg.users)
+    return _respond(conn, ctx, severity, result.score, agg.users, previous_severity)
 
 
-def _respond(conn: psycopg.Connection, ctx: dict, severity: str, score: int, users: int) -> int:
+def _respond(conn: psycopg.Connection, ctx: dict, severity: str, score: int, users: int,
+             previous_severity: str | None) -> int:
     app_id, dept_id = ctx["app_id"], ctx["department_id"]
     state_row = repo.pair_state(conn, app_id, dept_id)
     state = PairState(
@@ -97,6 +112,7 @@ def _respond(conn: psycopg.Connection, ctx: dict, severity: str, score: int, use
         last_nudge_at=state_row["last_nudge_at"],
         has_pending_block=state_row["has_pending_block"],
         last_block_rejected_at=state_row["last_block_rejected_at"],
+        previous_severity=previous_severity,
     )
     plan = plan_response(severity, ctx["approved"], state, repo.now(conn))
     created = 0
@@ -155,7 +171,7 @@ def refresh_snapshot(conn: psycopg.Connection) -> None:
 
 def recompute_all(conn: psycopg.Connection) -> dict[str, int]:
     pairs = repo.all_pairs(conn)
-    actions = sum(recompute_pair(conn, a, d) for a, d in pairs)
+    actions = recompute_pairs(conn, pairs)
     refresh_snapshot(conn)
     return {"pairs_rescored": len(pairs), "remediation_actions": actions}
 
@@ -203,7 +219,7 @@ def analyse_vendor(conn: psycopg.Connection, vendor_id: int, policy_text: str) -
                                 result.verification_notes(), result.extractor)
     repo.record_policy_version(conn, vendor_id, policy_text, score.score, result.verified)
     pairs = repo.pairs_for_vendor(conn, vendor_id)
-    actions = sum(recompute_pair(conn, a, d) for a, d in pairs)
+    actions = recompute_pairs(conn, pairs)
     refresh_snapshot(conn)
     return {
         "vendor_id": vendor_id,
@@ -289,7 +305,7 @@ def dashboard(conn: psycopg.Connection) -> dict[str, Any]:
     kpis = repo.dashboard_kpis(conn)
     index_now = exposure_index(repo.open_exposure_rows(conn))
     week_ago = repo.snapshot_on(conn, 7)
-    apps = repo.shadow_apps(conn, limit=50)
+    apps = repo.shadow_apps(conn, limit=50, window_days=get_settings().exposure_window_days)
     for a in apps:
         a["severity"] = severity_for(a["max_score"])
     return {
@@ -304,6 +320,7 @@ def dashboard(conn: psycopg.Connection) -> dict[str, Any]:
             "pending_approvals": kpis["pending_approvals"],
             "departments_affected": kpis["departments_affected"],
         },
+        "exposure_window_days": get_settings().exposure_window_days,
         "severity_breakdown": repo.severity_breakdown(conn),
         "trend": repo.trend(conn, 14),
         "apps": apps,

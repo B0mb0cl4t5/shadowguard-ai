@@ -8,6 +8,7 @@ ignoring them (blocks mass-assignment style attacks).
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -18,6 +19,10 @@ HOSTNAME_RE = re.compile(
     r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$"
 )
 DEPARTMENT_RE = re.compile(r"^[A-Za-z0-9 &()'.,-]{2,80}$")
+# Reserved for examples, so they belong to nobody. The demo data uses them instead of real hosts.
+DOCUMENTATION_NETS = tuple(
+    ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32")
+)
 
 
 class StrictModel(BaseModel):
@@ -30,6 +35,8 @@ class TelemetryEvent(StrictModel):
     user_hash: str = Field(pattern=r"^[0-9a-f]{64}$", description="SHA-256 of the user id, hashed at source")
     domain: str = Field(min_length=3, max_length=253)
     bytes_out: int = Field(default=0, ge=0, le=10_000_000_000)
+    bytes_in: int = Field(default=0, ge=0, le=10_000_000_000)
+    dest_ip: str | None = Field(default=None, max_length=45, description="The vendor's public address, never a client's")
     source: Literal["proxy", "dns", "firewall"] = "proxy"
 
     @field_validator("observed_at")
@@ -51,6 +58,22 @@ class TelemetryEvent(StrictModel):
         if not HOSTNAME_RE.fullmatch(v):
             raise ValueError("domain must be a bare hostname (no scheme, path or port)")
         return v
+
+    @field_validator("dest_ip")
+    @classmethod
+    def _valid_dest_ip(cls, v: str | None) -> str | None:
+        """Staff stay anonymous: an internal address could identify a person, so it is refused."""
+        if v is None:
+            return None
+        try:
+            ip = ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError("dest_ip must be a bare IP address (no port or hostname)") from None
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        if not any(ip in net for net in DOCUMENTATION_NETS) and (not ip.is_global or ip.is_multicast):
+            raise ValueError("dest_ip must be a public address")
+        return str(ip)
 
     @field_validator("department")
     @classmethod

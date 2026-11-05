@@ -7,7 +7,9 @@ import type { Remediation, Role, ShadowApp } from "@/lib/types";
 
 import type { SeverityFilter, SortKey } from "./apps-panel";
 import { BlockIcon, ChevronIcon, LogoutIcon, RadarIcon, RefreshIcon } from "./icons";
-import { SeverityBadge } from "./ui";
+import { Badge, SeverityBadge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 /**
  * ⌘K / Ctrl+K command palette, written without dependencies.
@@ -72,7 +74,7 @@ export function CommandPalette({
           group: "Awaiting your approval",
           label: `Review block: ${r.app} · ${r.department}`,
           keywords: `block approve reject review ${r.app} ${r.domain} ${r.department}`,
-          hint: <span className="text-amber-200">Needs a decision</span>,
+          hint: <Badge tone="warning">Needs a decision</Badge>,
           icon: <BlockIcon size={16} />,
           run: () => onReview(r),
         });
@@ -84,7 +86,7 @@ export function CommandPalette({
         group: "Tools",
         label: `Open ${a.name}`,
         keywords: `${a.name} ${a.domain} ${a.vendor} ${a.category} ${a.departments.map((d) => d.department).join(" ")}`,
-        hint: <SeverityBadge severity={a.severity} score={a.max_score} size="sm" />,
+        hint: <SeverityBadge severity={a.severity} score={a.max_score} />,
         icon: <RadarIcon size={16} />,
         run: () => onOpenApp(a),
       });
@@ -192,19 +194,20 @@ export function CommandPalette({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]">
-      <button type="button" aria-label="Close command menu" className="absolute inset-0 bg-ink-950/70 backdrop-blur-sm" onClick={onClose} />
+      <Button variant="bare" aria-label="Close command menu" className="absolute inset-0 bg-scrim" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Command menu"
-        className="glass relative w-full max-w-xl overflow-hidden border-white/15 bg-ink-900/80 backdrop-blur-xl animate-rise-in"
+        className="relative w-full max-w-xl animate-fade-in overflow-hidden rounded-xl border border-line bg-surface"
       >
-        <div className="flex items-center gap-3 border-b border-white/[0.08] px-4">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="shrink-0 text-slate-500" aria-hidden>
+        <div className="flex items-center gap-3 border-b border-line px-4">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="shrink-0 text-muted" aria-hidden>
             <circle cx="11" cy="11" r="6.5" />
             <path d="m20 20-4.2-4.2" />
           </svg>
-          <input
+          <Input
+            bare
             ref={inputRef}
             // Focus synchronously on mount so keystrokes typed right after ⌘K are never lost.
             autoFocus
@@ -215,17 +218,17 @@ export function CommandPalette({
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
-            aria-activedescendant={visible[active] ? `${baseId}-${visible[active]!.id}` : undefined}
+            aria-activedescendant={visible[active] ? `${baseId}-${active}` : undefined}
             placeholder={role === "admin" ? "Search tools, or type “block” to review proposals…" : "Search tools or actions…"}
-            className="h-14 w-full bg-transparent text-[16px] text-white placeholder-slate-500 outline-none focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm"
+            className="h-14 w-full bg-transparent text-base text-ink placeholder-muted outline-none focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm"
           />
-          <kbd className="hidden shrink-0 rounded border border-white/15 px-1.5 py-0.5 font-mono text-[0.65rem] text-slate-400 sm:block">
+          <kbd className="hidden shrink-0 rounded border border-control px-1.5 py-0.5 font-mono text-xs text-muted sm:block">
             Esc
           </kbd>
         </div>
 
         <ul ref={listRef} id={listId} role="listbox" aria-label="Commands" className="max-h-[min(60vh,26rem)] overflow-y-auto p-2">
-          {visible.length === 0 && <li className="px-3 py-8 text-center text-sm text-slate-400">No matching tools or actions.</li>}
+          {visible.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No matching tools or actions.</li>}
           {visible.map((item, index) => {
             const showGroup = item.group !== lastGroup;
             lastGroup = item.group;
@@ -233,22 +236,22 @@ export function CommandPalette({
             return (
               <li key={item.id} role="presentation">
                 {showGroup && (
-                  <p className="eyebrow px-3 pb-1.5 pt-3 text-[0.62rem]" aria-hidden>
+                  <p className="px-3 pb-1.5 pt-3 text-xs text-muted" aria-hidden>
                     {item.group}
                   </p>
                 )}
                 <div
-                  id={`${baseId}-${item.id}`}
+                  id={`${baseId}-${index}`}
                   role="option"
                   aria-selected={selected}
                   data-index={index}
                   onMouseMove={() => setActive(index)}
                   onClick={() => run(item)}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
-                    selected ? "bg-white/[0.09] text-white" : "text-slate-300"
+                  className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors ${
+                    selected ? "bg-raised text-ink" : "text-ink2"
                   }`}
                 >
-                  <span className={selected ? "text-signal" : "text-slate-500"}>{item.icon}</span>
+                  <span className={selected ? "text-ink" : "text-muted"}>{item.icon}</span>
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
                   {item.hint && <span className="shrink-0 text-xs">{item.hint}</span>}
                 </div>
@@ -257,7 +260,7 @@ export function CommandPalette({
           })}
         </ul>
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/[0.08] px-4 py-2.5 text-[0.68rem] text-slate-500">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 text-xs text-muted">
           <span>
             <kbd className="font-mono">↑↓</kbd> move
           </span>

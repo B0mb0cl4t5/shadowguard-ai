@@ -25,6 +25,8 @@ def main() -> None:
     files = [ROOT / "database" / "schema.sql"]
     if "--schema-only" not in sys.argv:
         files.append(ROOT / "database" / "seed_data.sql")
+    # Migrations are safe to run twice, so a fresh database gets them too (including the real AI tools).
+    files += sorted((ROOT / "database" / "migrations").glob("*.sql"))
     if "--yes" not in sys.argv:
         answer = input("This DROPS and recreates all ShadowGuard tables. Type 'yes' to continue: ")
         if answer.strip().lower() != "yes":

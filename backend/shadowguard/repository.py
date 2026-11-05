@@ -66,14 +66,14 @@ def pair_context(conn: psycopg.Connection, app_id: int, department_id: int) -> R
 def window_rows(conn: psycopg.Connection, app_id: int, department_id: int, window_days: int) -> list[tuple]:
     rows = conn.execute(
         """
-        SELECT observed_at, user_hash, bytes_out
+        SELECT observed_at, user_hash, bytes_out, bytes_in
           FROM telemetry_events
          WHERE app_id = %s AND department_id = %s
            AND observed_at >= NOW() - make_interval(days => %s)
         """,
         (app_id, department_id, window_days),
     ).fetchall()
-    return [(r["observed_at"], r["user_hash"], r["bytes_out"]) for r in rows]
+    return [(r["observed_at"], r["user_hash"], r["bytes_out"], r["bytes_in"]) for r in rows]
 
 
 def pairs_for_vendor(conn: psycopg.Connection, vendor_id: int) -> list[tuple[int, int]]:
@@ -113,6 +113,15 @@ def pair_state(conn: psycopg.Connection, app_id: int, department_id: int) -> Row
         """,
         {"a": app_id, "d": department_id},
     ).fetchone()
+
+
+def exposure_severity(conn: psycopg.Connection, app_id: int, department_id: int) -> str | None:
+    """The pair's stored severity, read before a rescore overwrites it."""
+    row = conn.execute(
+        "SELECT severity FROM app_exposure WHERE app_id = %s AND department_id = %s",
+        (app_id, department_id),
+    ).fetchone()
+    return row["severity"] if row else None
 
 
 def vendor(conn: psycopg.Connection, vendor_id: int) -> Row | None:
@@ -155,16 +164,21 @@ _SORTS: dict[str, sql.Composable] = {
 
 
 def shadow_apps(conn: psycopg.Connection, severity: str | None = None, sort: str = "exposure",
-                limit: int = 100) -> list[Row]:
+                limit: int = 100, window_days: int = 7) -> list[Row]:
     order = _SORTS.get(sort, _SORTS["exposure"])
     query = sql.SQL(
         """
         SELECT a.id, a.name, a.domain, a.category, v.id AS vendor_id, v.name AS vendor,
-               v.posture_score, v.trains_on_inputs, v.verification_status, alt.name AS alternative,
-               CASE WHEN pv.n > 1 THEN pv.latest END   AS policy_changed_at,
+               v.posture_score, v.trains_on_inputs, v.verification_status, v.data_location,
+               alt.name AS alternative,
+               CASE WHEN pv.n > 1 AND pv.latest_score IS DISTINCT FROM pv.previous_score
+                    THEN pv.latest END   AS policy_changed_at,
                MAX(e.exposure_score)                   AS max_score,
                SUM(e.users)::int                       AS total_users,
                SUM(e.events)::int                      AS total_events,
+               SUM(e.bytes_out)::bigint                AS bytes_out,
+               SUM(e.bytes_in)::bigint                 AS bytes_in,
+               ips.dest_ips,
                MIN(e.first_seen)                       AS first_seen,
                MAX(e.last_seen)                        AS last_seen,
                json_agg(json_build_object(
@@ -178,17 +192,84 @@ def shadow_apps(conn: psycopg.Connection, severity: str | None = None, sort: str
           JOIN departments d   ON d.id = e.department_id
           LEFT JOIN saas_apps alt ON alt.id = a.approved_alternative_id
           LEFT JOIN LATERAL (
-                SELECT COUNT(*) AS n, MAX(captured_at) AS latest
+                SELECT COUNT(*) AS n, MAX(captured_at) AS latest,
+                       (SELECT posture_score FROM policy_versions
+                          WHERE vendor_id = v.id ORDER BY captured_at DESC LIMIT 1) AS latest_score,
+                       (SELECT posture_score FROM policy_versions
+                          WHERE vendor_id = v.id ORDER BY captured_at DESC LIMIT 1 OFFSET 1) AS previous_score
                   FROM policy_versions WHERE vendor_id = v.id
           ) pv ON TRUE
+          LEFT JOIN LATERAL (
+                SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                           'ip', top.ip, 'bytes_out', top.bytes_out, 'bytes_in', top.bytes_in
+                       ) ORDER BY top.bytes_out + top.bytes_in DESC), '[]'::jsonb) AS dest_ips
+                  FROM (SELECT host(t.dest_ip) AS ip, SUM(t.bytes_out)::bigint AS bytes_out,
+                               SUM(t.bytes_in)::bigint AS bytes_in
+                          FROM telemetry_events t
+                         WHERE t.app_id = a.id AND t.dest_ip IS NOT NULL
+                           AND t.observed_at >= NOW() - make_interval(days => %(window)s)
+                         GROUP BY t.dest_ip
+                         ORDER BY SUM(t.bytes_out) + SUM(t.bytes_in) DESC
+                         LIMIT 5) top
+          ) ips ON TRUE
          WHERE a.approved = FALSE AND a.is_ai = TRUE
-         GROUP BY a.id, v.id, alt.name, pv.n, pv.latest
+         GROUP BY a.id, v.id, alt.name, pv.n, pv.latest, pv.latest_score, pv.previous_score, ips.dest_ips
         HAVING (%(severity)s::text IS NULL OR bool_or(e.severity = %(severity)s::text))
          ORDER BY {order}
          LIMIT %(limit)s
         """
     ).format(order=order)
-    return conn.execute(query, {"severity": severity, "limit": limit}).fetchall()
+    return conn.execute(query, {"severity": severity, "limit": limit, "window": window_days}).fetchall()
+
+
+def live_feed(conn: psycopg.Connection, after_id: int, limit: int = 20) -> dict[str, Any]:
+    """The newest traffic to unapproved tools, and a revision that changes whenever the dashboard would.
+
+    Metadata only, and never the hashed user id: a live feed of one person's activity
+    is exactly what the anonymity rule exists to prevent.
+    """
+    events = conn.execute(
+        """
+        SELECT t.id, t.observed_at, a.id AS app_id, a.name AS app, d.name AS department,
+               t.bytes_out, t.bytes_in, host(t.dest_ip) AS dest_ip, v.data_location,
+               e.severity, e.exposure_score AS score
+          FROM telemetry_events t
+          JOIN saas_apps a   ON a.id = t.app_id
+          JOIN vendors v     ON v.id = a.vendor_id
+          JOIN departments d ON d.id = t.department_id
+          LEFT JOIN app_exposure e ON e.app_id = t.app_id AND e.department_id = t.department_id
+         WHERE a.approved = FALSE AND a.is_ai = TRUE AND t.id > %s
+         ORDER BY t.id DESC
+         LIMIT %s
+        """,
+        (after_id, limit),
+    ).fetchall()
+    state = conn.execute(
+        """
+        SELECT COALESCE((SELECT MAX(id) FROM telemetry_events), 0)                  AS latest_event_id,
+               (SELECT COALESCE(MAX(id), 0) FROM remediation_actions)               AS last_action,
+               (SELECT COUNT(*) FROM remediation_actions WHERE decided_at IS NOT NULL) AS decided,
+               (SELECT MAX(analyzed_at) FROM vendors)                               AS policies_changed_at
+        """
+    ).fetchone()
+    minute = conn.execute(
+        """
+        SELECT COUNT(*)::int AS events, COALESCE(SUM(t.bytes_out), 0)::bigint AS bytes_out,
+               COALESCE(SUM(t.bytes_in), 0)::bigint AS bytes_in
+          FROM telemetry_events t
+          JOIN saas_apps a ON a.id = t.app_id
+         WHERE a.approved = FALSE AND a.is_ai = TRUE
+           AND t.observed_at >= NOW() - INTERVAL '1 minute'
+        """
+    ).fetchone()
+    changed = state["policies_changed_at"]
+    return {
+        "revision": f"{state['latest_event_id']}:{state['last_action']}:{state['decided']}:{changed.isoformat() if changed else ''}",
+        "latest_event_id": state["latest_event_id"],
+        "policies_changed_at": changed,
+        "last_minute": minute,
+        "events": events,
+    }
 
 
 def dashboard_kpis(conn: psycopg.Connection) -> Row:
@@ -286,13 +367,13 @@ def recent_remediations(conn: psycopg.Connection, limit: int = 30) -> list[Row]:
 
 
 def insert_events(conn: psycopg.Connection, rows: list[tuple]) -> None:
-    """rows = (observed_at, department_id, user_hash, domain, app_id, bytes_out, source)."""
+    """rows = (observed_at, department_id, user_hash, domain, app_id, bytes_out, bytes_in, dest_ip, source)."""
     with conn.cursor() as cur:
         cur.executemany(
             """
             INSERT INTO telemetry_events
-                   (observed_at, department_id, user_hash, domain, app_id, bytes_out, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   (observed_at, department_id, user_hash, domain, app_id, bytes_out, bytes_in, dest_ip, source)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::inet, %s)
             """,
             rows,
         )
@@ -303,12 +384,13 @@ def upsert_exposure(conn: psycopg.Connection, app_id: int, department_id: int, a
     """Insert or refresh a pair's exposure; returns its status (open / mitigated / accepted)."""
     row = conn.execute(
         """
-        INSERT INTO app_exposure (app_id, department_id, users, events, bytes_out, first_seen,
+        INSERT INTO app_exposure (app_id, department_id, users, events, bytes_out, bytes_in, first_seen,
                                   last_seen, exposure_score, severity, factors, status, updated_at)
-        VALUES (%(app)s, %(dept)s, %(users)s, %(events)s, %(bytes)s, %(first)s, %(last)s,
+        VALUES (%(app)s, %(dept)s, %(users)s, %(events)s, %(bytes)s, %(bytes_in)s, %(first)s, %(last)s,
                 %(score)s, %(sev)s, %(factors)s, 'open', NOW())
         ON CONFLICT (app_id, department_id) DO UPDATE SET
             users = EXCLUDED.users, events = EXCLUDED.events, bytes_out = EXCLUDED.bytes_out,
+            bytes_in = EXCLUDED.bytes_in,
             first_seen = LEAST(app_exposure.first_seen, EXCLUDED.first_seen),
             last_seen = EXCLUDED.last_seen, exposure_score = EXCLUDED.exposure_score,
             severity = EXCLUDED.severity, factors = EXCLUDED.factors, updated_at = NOW()
@@ -316,7 +398,7 @@ def upsert_exposure(conn: psycopg.Connection, app_id: int, department_id: int, a
         """,
         {
             "app": app_id, "dept": department_id, "users": agg.users, "events": agg.events,
-            "bytes": agg.bytes_out, "first": agg.first_seen, "last": agg.last_seen,
+            "bytes": agg.bytes_out, "bytes_in": agg.bytes_in, "first": agg.first_seen, "last": agg.last_seen,
             "score": score, "sev": severity, "factors": Jsonb(factors),
         },
     ).fetchone()
