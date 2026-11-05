@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import { applyReducedMotion, loadReducedMotion } from "@/lib/use-reduced-motion";
 import { useToast } from "@/lib/use-toast";
 import type { Dashboard, LiveEvent, LiveFeed, Remediation, Role, ShadowApp } from "@/lib/types";
@@ -198,7 +199,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       // Cap iterations so a stuck refreshAgain flag can't spin forever fetching.
       for (let i = 0; i < 3; i += 1) {
         refreshAgain.current = false;
-        const res = await fetch("/api/dashboard", { cache: "no-store" });
+        const res = await fetch("/api/dashboard", { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS.poll) });
         if (res.status === 401) {
           window.location.assign("/login");
           return;
@@ -224,7 +225,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     if (liveBusy.current) return;
     liveBusy.current = true;
     try {
-      const res = await fetch(`/api/live?after_id=${afterId.current}`, { cache: "no-store" });
+      // A request that never answers would leave liveBusy set and stop every later poll, so it gets a deadline.
+      const res = await fetch(`/api/live?after_id=${afterId.current}`, { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS.poll) });
       if (res.status === 401) {
         window.location.assign("/login");
         return;
@@ -324,9 +326,13 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   }, [openTab, refresh, toast]);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.assign("/login");
-  }, []);
+    try {
+      await fetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(TIMEOUT_MS.request) });
+      window.location.assign("/login");
+    } catch (err) {
+      toast({ title: "Couldn't sign out", description: failureMessage(err, "The server didn't answer. Try again."), tone: "danger" });
+    }
+  }, [toast]);
 
   // The open tab lives in the URL, so it can be linked to and Back returns to the previous tab.
   useEffect(() => {

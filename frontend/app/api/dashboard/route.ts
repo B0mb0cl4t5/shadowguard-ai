@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { BackendError, backendFetch } from "@/lib/backend";
-import { requireSession } from "@/lib/request-guard";
+import { overBudget, requireSession } from "@/lib/request-guard";
 import type { Dashboard } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireSession(["viewer", "admin"]);
   if (session instanceof NextResponse) return session;
+  const limited = overBudget(request, "read");
+  if (limited) return limited;
   try {
     // Reads always use the viewer key, even for admins (least privilege).
     const data = await backendFetch<Dashboard>("/api/v1/dashboard", { role: "viewer" });

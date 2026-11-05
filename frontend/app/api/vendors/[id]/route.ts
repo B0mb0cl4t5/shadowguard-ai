@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { BackendError, backendFetch } from "@/lib/backend";
-import { parseId, requireSession } from "@/lib/request-guard";
+import { overBudget, parseId, requireSession } from "@/lib/request-guard";
 import type { VendorDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(["viewer", "admin"]);
   if (session instanceof NextResponse) return session;
+  const limited = overBudget(request, "read");
+  if (limited) return limited;
   const id = parseId((await params).id);
   if (id === null) return NextResponse.json({ detail: "Invalid vendor id" }, { status: 400 });
   try {

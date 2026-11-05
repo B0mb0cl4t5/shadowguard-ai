@@ -274,6 +274,20 @@ def test_rate_limit_table_matches_schema_and_migration():
         assert statement.replace(" IF NOT EXISTS", "") in schema
 
 
+def test_forwarded_address_is_trusted_only_behind_a_known_proxy(monkeypatch):
+    import dataclasses
+    from types import SimpleNamespace
+
+    from shadowguard import security
+    from shadowguard.config import get_settings
+
+    request = SimpleNamespace(headers={"x-forwarded-for": "198.51.100.9, 10.0.0.1"}, client=SimpleNamespace(host="10.1.2.3"))
+    monkeypatch.setattr(security, "get_settings", lambda: dataclasses.replace(get_settings(), trust_proxy=False))
+    assert security.client_ip(request) == "10.1.2.3"  # a forged header can't pick a fresh address per guess
+    monkeypatch.setattr(security, "get_settings", lambda: dataclasses.replace(get_settings(), trust_proxy=True))
+    assert security.client_ip(request) == "198.51.100.9"
+
+
 def test_sign_in_checks_have_their_own_request_allowance():
     """A flood of sign-in attempts must not use up the dashboard's allowance for its own data."""
     from shadowguard import security
@@ -342,10 +356,13 @@ def test_escalation_writes_a_fresh_ticket_but_keeps_one_incident():
 def test_rescoring_stays_on_the_requests_connection():
     # Events and policies written in this request are uncommitted, so another connection
     # (a worker thread) would score without them. Keep scoring on the caller's connection.
+    # Only a Teams nudge, delivered after the commit, may open a connection of its own.
     from shadowguard import service
 
-    source = inspect.getsource(service)
-    assert "ThreadPoolExecutor" not in source and "get_connection" not in source
+    assert "ThreadPoolExecutor" not in inspect.getsource(service)
+    for scoring in (service.ingest_telemetry, service.recompute_pairs, service.recompute_pair, service._respond,
+                    service.recompute_all, service.analyse_vendor):
+        assert "get_connection" not in inspect.getsource(scoring), scoring.__name__
 
 
 def test_domain_matching_does_not_accept_lookalikes():

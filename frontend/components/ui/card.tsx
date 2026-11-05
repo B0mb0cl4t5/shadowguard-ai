@@ -1,5 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
+import { PanelBoundary } from "./panel-boundary";
+
 export function Card({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={`rounded-lg bg-surface ${className}`} {...props} />;
 }
@@ -36,7 +38,9 @@ export function Panel({
         </div>
         {action}
       </header>
-      <div className={`min-w-0 flex-1 p-5 ${bodyClassName}`}>{children}</div>
+      <div className={`min-w-0 flex-1 p-5 ${bodyClassName}`}>
+        <PanelBoundary label={title}>{children}</PanelBoundary>
+      </div>
     </section>
   );
 }

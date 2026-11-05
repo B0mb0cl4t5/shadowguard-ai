@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/safe-next.test.mjs lib/password.test.mjs lib/demo-mode.test.mjs lib/rate-limit.test.mjs lib/design-contract.test.mjs",
+    "test": "node --experimental-strip-types --test lib/safe-next.test.mjs lib/password.test.mjs lib/demo-mode.test.mjs lib/rate-limit.test.mjs lib/client-ip.test.mjs lib/design-contract.test.mjs",
     "hash-password": "node scripts/hash-password.mjs",
     "gen-secret": "node -e \"console.log(require('crypto').randomBytes(48).toString('base64url'))\""
   },

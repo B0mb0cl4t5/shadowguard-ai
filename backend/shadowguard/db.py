@@ -10,8 +10,9 @@ codebase lives in ``repository.py`` and passes values as bound parameters.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import ParseResult, parse_qs, unquote, urlparse
 
 import psycopg
@@ -51,6 +52,23 @@ def validate_database_url(url: str) -> str:
     return url
 
 
+_after_commit: ContextVar[list[Callable[[], None]] | None] = ContextVar("after_commit", default=None)
+
+
+def after_commit(callback: Callable[[], None]) -> None:
+    """Run ``callback`` once the current ``get_connection`` transaction has committed, never on rollback.
+
+    For outside calls, such as a Teams webhook, that must not hold the transaction and its
+    locks open while they wait. With no ``get_connection`` in progress (a script driving the
+    service on its own connection) it runs straight away.
+    """
+    pending = _after_commit.get()
+    if pending is None:
+        callback()
+    else:
+        pending.append(callback)
+
+
 @contextmanager
 def get_connection() -> Iterator[psycopg.Connection]:
     """Yield a connection inside a transaction; commit on success, roll back on error.
@@ -66,9 +84,15 @@ def get_connection() -> Iterator[psycopg.Connection]:
         connect_timeout=10,
         application_name="shadowguard-api",
     )
+    callbacks: list[Callable[[], None]] = []
+    token = _after_commit.set(callbacks)
     try:
         with conn.transaction():
             repo.set_statement_timeout(conn)
             yield conn
     finally:
+        _after_commit.reset(token)
         conn.close()
+    # Only reached when the transaction committed: an error above propagates past this.
+    for callback in callbacks:
+        callback()

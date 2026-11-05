@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { relativeTime, titleCase } from "@/lib/format";
+import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import type { Evidence, Factor, PolicyAnalysis, Role, ShadowApp, VendorDetail } from "@/lib/types";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
@@ -67,11 +68,11 @@ export function VendorDrawer({
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch(`/api/vendors/${app.vendor_id}`, { cache: "no-store" });
+      const res = await fetch(`/api/vendors/${app.vendor_id}`, { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS.request) });
       if (!res.ok) throw new Error(`Could not load vendor analysis (${res.status})`);
       setVendor((await res.json()) as VendorDetail);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load vendor analysis");
+      setError(failureMessage(e, "Could not load vendor analysis"));
     }
   }, [app.vendor_id]);
 
@@ -100,6 +101,7 @@ export function VendorDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(source === "fetch" ? { fetch: true } : {}),
+        signal: AbortSignal.timeout(TIMEOUT_MS.analyse),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -108,7 +110,7 @@ export function VendorDrawer({
       await load();
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Re-analysis failed");
+      setError(failureMessage(e, "Re-analysis failed"));
     } finally {
       setBusy(false);
     }
@@ -347,13 +349,14 @@ function PolicyTester({ vendorId, vendorName, onSaved }: { vendorId: number; ven
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ policy_text: text, persist: true }),
+        signal: AbortSignal.timeout(TIMEOUT_MS.analyse),
       });
       const body = (await res.json().catch(() => ({}))) as { detail?: string };
       if (!res.ok) throw new Error(body.detail ?? `Saving failed (${res.status})`);
       setSaved(true);
       await onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Saving failed");
+      setError(failureMessage(e, "Saving failed"));
     } finally {
       setBusy(false);
     }
@@ -373,12 +376,13 @@ function PolicyTester({ vendorId, vendorName, onSaved }: { vendorId: number; ven
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ policy_text: text, persist: false }),
+        signal: AbortSignal.timeout(TIMEOUT_MS.analyse),
       });
       const body = (await res.json().catch(() => ({}))) as PolicyAnalysis & { detail?: string };
       if (!res.ok) throw new Error(body.detail ?? `Analysis failed (${res.status})`);
       setResult(body);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Analysis failed");
+      setError(failureMessage(e, "Analysis failed"));
     } finally {
       setBusy(false);
     }

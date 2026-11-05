@@ -59,7 +59,9 @@ class Settings:
     environment: str = "production"
     enable_docs: bool = False
     allowed_origins: tuple[str, ...] = ()
-    rate_limit_per_minute: int = 120
+    # The dashboard's server calls with one key for every signed-in user, so this is the ceiling for
+    # all of them together; the dashboard caps each user before it gets here.
+    rate_limit_per_minute: int = 600
     exposure_window_days: int = 7
     trust_proxy: bool = False
     teams_webhook_url: str | None = None
@@ -91,7 +93,7 @@ def get_settings() -> Settings:
         environment=os.getenv("SHADOWGUARD_ENV", "production").strip().lower(),
         enable_docs=_bool("ENABLE_DOCS", False),
         allowed_origins=origins,
-        rate_limit_per_minute=_int("RATE_LIMIT_PER_MINUTE", 120, 10, 10_000),
+        rate_limit_per_minute=_int("RATE_LIMIT_PER_MINUTE", 600, 10, 10_000),
         exposure_window_days=_int("EXPOSURE_WINDOW_DAYS", 7, 1, 30),
         trust_proxy=_bool("TRUST_PROXY", False),
         teams_webhook_url=webhook,

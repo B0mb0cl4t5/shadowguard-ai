@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { BackendError, backendFetch } from "@/lib/backend";
-import { requireSession } from "@/lib/request-guard";
+import { overBudget, requireSession } from "@/lib/request-guard";
 import type { LiveFeed } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const session = await requireSession(["viewer", "admin"]);
   if (session instanceof NextResponse) return session;
+  const limited = overBudget(request, "read");
+  if (limited) return limited;
   const after = request.nextUrl.searchParams.get("after_id") ?? "0";
   if (!/^\d{1,18}$/.test(after)) return NextResponse.json({ detail: "Invalid after_id" }, { status: 400 });
   try {

@@ -80,6 +80,69 @@ def test_surge_creates_incident_ticket_nudge_and_pending_block(client, seeded_db
     assert again.json()["remediation_actions"] == 0
 
 
+def _with_teams_webhook(monkeypatch, send):
+    import dataclasses
+
+    from shadowguard import service
+    from shadowguard.config import get_settings
+
+    configured = dataclasses.replace(get_settings(), teams_webhook_url="https://teams.example/hook")
+    monkeypatch.setattr(service, "get_settings", lambda: configured)
+    monkeypatch.setattr(service, "send_nudge", send)
+
+
+def test_teams_nudge_is_sent_only_after_the_transaction_commits(client, seeded_db, monkeypatch):
+    import psycopg
+
+    seen = []
+
+    def send(text):
+        # Another connection can already see the nudge, so the transaction has committed and
+        # holds nothing while Teams answers. Until Teams confirms, it is recorded as 'failed'.
+        with psycopg.connect(seeded_db) as other:
+            seen.append(other.execute("SELECT status FROM remediation_actions WHERE action_type = 'nudge' AND detail = %s",
+                                      (text,)).fetchone())
+        return "executed"
+
+    _with_teams_webhook(monkeypatch, send)
+    r = client.post("/api/v1/telemetry", json={"events": ev("paperpilot.ai", "Examinations & Assessment", 60)},
+                    headers=headers("ingest"))
+    assert r.status_code == 202
+    assert seen == [("failed",)]
+    with psycopg.connect(seeded_db) as conn:
+        latest = conn.execute("SELECT status FROM remediation_actions WHERE action_type = 'nudge' ORDER BY id DESC LIMIT 1").fetchone()
+    assert latest == ("executed",)
+
+
+def test_a_nudge_teams_refused_stays_failed(client, seeded_db, monkeypatch):
+    import psycopg
+
+    _with_teams_webhook(monkeypatch, lambda text: "failed")
+    r = client.post("/api/v1/telemetry", json={"events": ev("paperpilot.ai", "Examinations & Assessment", 60)},
+                    headers=headers("ingest"))
+    assert r.status_code == 202 and r.json()["remediation_actions"] == 3
+    with psycopg.connect(seeded_db) as conn:
+        latest = conn.execute("SELECT status FROM remediation_actions WHERE action_type = 'nudge' ORDER BY id DESC LIMIT 1").fetchone()
+    assert latest == ("failed",)
+
+
+def test_after_commit_runs_only_once_the_transaction_commits(seeded_db):
+    import pytest
+
+    from shadowguard.db import after_commit, get_connection
+
+    ran = []
+    with get_connection():
+        after_commit(lambda: ran.append("committed"))
+        assert ran == []  # nothing runs while the transaction is still open
+    assert ran == ["committed"]
+    with pytest.raises(RuntimeError):
+        with get_connection():
+            after_commit(lambda: ran.append("rolled back"))
+            raise RuntimeError("the request failed")
+    assert ran == ["committed"]
+
+
 def test_admin_decision_flow_and_double_decision_conflict(client, seeded_db):
     pending = [x for x in client.get("/api/v1/dashboard", headers=headers("viewer")).json()["remediations"]
                if x["status"] == "pending_approval"]

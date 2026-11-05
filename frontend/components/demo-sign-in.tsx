@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import type { Role } from "@/lib/types";
 
 import { Button } from "./ui/button";
@@ -16,14 +17,14 @@ export function DemoSignIn({ role, next }: { role: Role; next: string }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/demo", { method: "POST" });
+      const res = await fetch("/api/auth/demo", { method: "POST", signal: AbortSignal.timeout(TIMEOUT_MS.request) });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { detail?: string };
         throw new Error(body.detail ?? "Demo sign-in failed");
       }
       window.location.assign(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Demo sign-in failed");
+      setError(failureMessage(err, "Demo sign-in failed"));
       setBusy(false);
     }
   }

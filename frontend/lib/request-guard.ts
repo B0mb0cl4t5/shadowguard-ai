@@ -3,6 +3,8 @@ import "server-only";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { clientIpFrom } from "./client-ip";
+import { allow } from "./rate-limit";
 import { sessionCookieName, verifySessionToken, type Session } from "./session";
 import type { Role } from "./types";
 
@@ -37,8 +39,22 @@ export function isSameOrigin(request: Request): boolean {
   }
 }
 
+/** Trusts X-Forwarded-For only behind a known proxy (see lib/client-ip.ts). */
 export function clientIp(request: Request): string {
-  return (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0]!.trim().slice(0, 64);
+  return clientIpFrom(request.headers);
+}
+
+/** Requests a minute each client may make: one open dashboard tab uses about 20 reads. */
+const BUDGET = { read: 240, write: 20 } as const;
+
+/**
+ * Every signed-in user reaches the risk engine with the dashboard's one key, so a runaway tab
+ * or script could use up its allowance and leave everyone on "Reconnecting". Each client is
+ * capped here first. Returns the response to send when over budget, or null to carry on.
+ */
+export function overBudget(request: Request, kind: keyof typeof BUDGET): NextResponse | null {
+  if (allow(`data:${kind}:${clientIp(request)}`, BUDGET[kind], 60_000)) return null;
+  return NextResponse.json({ detail: "Too many requests. Try again shortly." }, { status: 429, headers: { "Retry-After": "30" } });
 }
 
 /** Parse a numeric path id strictly: digits only, positive, 32-bit. */

@@ -460,6 +460,11 @@ def insert_remediation(conn: psycopg.Connection, app_id: int, department_id: int
     return row["id"] if row else None
 
 
+def set_remediation_status(conn: psycopg.Connection, action_id: int, status: str) -> None:
+    """Record a nudge's delivery result; only nudges change status this way."""
+    conn.execute("UPDATE remediation_actions SET status = %s WHERE id = %s AND action_type = 'nudge'", (status, action_id))
+
+
 def decide_remediation(conn: psycopg.Connection, action_id: int, status: str, actor: str,
                        note: str, detail_suffix: str) -> Row:
     return conn.execute(

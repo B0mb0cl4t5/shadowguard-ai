@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { BackendError, backendFetch } from "@/lib/backend";
-import { isSameOrigin, parseId, requireSession } from "@/lib/request-guard";
+import { isSameOrigin, overBudget, parseId, requireSession } from "@/lib/request-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   const session = await requireSession(["admin"]);
   if (session instanceof NextResponse) return session;
+  const limited = overBudget(request, "write");
+  if (limited) return limited;
   const id = parseId((await params).id);
   if (id === null) return NextResponse.json({ detail: "Invalid action id" }, { status: 400 });
 

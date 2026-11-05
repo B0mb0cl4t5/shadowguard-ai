@@ -6,6 +6,7 @@ Discover (ingest_telemetry) → Read the terms (analyse_vendor)
 
 from __future__ import annotations
 
+import logging
 import random
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +16,7 @@ import psycopg
 from . import repository as repo
 from . import gemini
 from .config import get_settings
+from .db import after_commit, get_connection
 from .idp import analyse_policy
 from .models import TelemetryEvent
 from .notify import send_nudge
@@ -23,6 +25,8 @@ from .pipeline import (
 )
 from .scoring import VendorPosture, exposure, exposure_index, severity_for, vendor_posture
 
+
+log = logging.getLogger("shadowguard.service")
 
 POLICY_DISPLAY_CHARS = 50_000
 
@@ -136,9 +140,17 @@ def _respond(conn: psycopg.Connection, ctx: dict, severity: str, score: int, use
             created += 1
     if plan.nudge:
         text = nudge_message(ctx["app_name"], ctx["department"], users, ctx["trains_on_inputs"], ctx["alternative"])
-        status = send_nudge(text)
-        if repo.insert_remediation(conn, app_id, dept_id, incident_id, "nudge", status, False, text):
-            created += 1
+        if not get_settings().teams_webhook_url:
+            if repo.insert_remediation(conn, app_id, dept_id, incident_id, "nudge", "simulated", False, text):
+                created += 1
+        else:
+            # Recorded as 'failed' until Teams confirms it, and sent only once this transaction has
+            # committed, so a slow Teams never holds the database. A crash in between leaves it
+            # 'failed', which is the truth: it was never delivered.
+            action_id = repo.insert_remediation(conn, app_id, dept_id, incident_id, "nudge", "failed", False, text)
+            if action_id:
+                created += 1
+                after_commit(lambda: _deliver_nudge(action_id, text))
     if plan.propose_block:
         detail = (f"Proposed: block {ctx['app_name']} for {ctx['department']} at the proxy. "
                   f"Exposure {score}/100 (critical). Awaiting admin approval.")
@@ -146,6 +158,18 @@ def _respond(conn: psycopg.Connection, ctx: dict, severity: str, score: int, use
                                    "pending_approval", True, detail):
             created += 1
     return created
+
+
+def _deliver_nudge(action_id: int, text: str) -> None:
+    """Send a recorded nudge to Teams and mark it executed when Teams accepts it."""
+    try:
+        if send_nudge(text) != "executed":
+            return  # stays 'failed'; notify.py has logged why
+        with get_connection() as conn:
+            repo.set_remediation_status(conn, action_id, "executed")
+    except Exception:
+        # The request's own work has already committed; a delivery problem must not fail it.
+        log.exception("Could not deliver or record Teams nudge %s", action_id)
 
 
 def _answers(v: dict) -> dict[str, str]:

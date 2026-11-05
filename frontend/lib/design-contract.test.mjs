@@ -120,6 +120,51 @@ test("the animations button has CSS behind it", () => {
   assert.match(css.text, /\.reduce-motion \*/);
 });
 
+test("every browser request has a deadline, so a hung one can't freeze the screen", () => {
+  const callers = [
+    ...files.filter((f) => f.name.startsWith("components/")),
+    { name: "lib/actions.ts", text: readFileSync(join(frontend, "lib", "actions.ts"), "utf8") },
+  ];
+  for (const f of callers) {
+    const calls = (f.text.match(/(?<![\w.])fetch\(/g) ?? []).length;
+    const deadlines = (f.text.match(/signal: AbortSignal\.timeout\(/g) ?? []).length;
+    assert.equal(deadlines, calls, `${f.name}: ${calls} requests, ${deadlines} with a timeout`);
+  }
+});
+
+test("every signed-in data route caps each client before calling the risk engine", () => {
+  // All users share the dashboard's backend key, so one runaway client must not use up its allowance.
+  const routes = readdirRoutes(join(frontend, "app", "api"), true).filter((r) => r.text.includes("requireSession("));
+  assert.ok(routes.length >= 5);
+  for (const r of routes) {
+    assert.match(r.text, /overBudget\(request, "(?:read|write)"\)/, `${r.path} has no per-client limit`);
+    const backendCall = r.text.search(/backendFetch(?:<[^>]*>)?\(/);
+    assert.ok(backendCall > 0 && r.text.indexOf("overBudget(") < backendCall, `${r.path} limits after calling the backend`);
+  }
+});
+
+test("the dashboard's severity bands match the risk engine's", () => {
+  // The backend sends each tool's severity, but the dashboard also bands figures it computes
+  // itself (the index, departments), so the two copies must never drift apart.
+  const scoring = readFileSync(join(frontend, "..", "backend", "shadowguard", "scoring.py"), "utf8");
+  const thresholds = scoring.match(/SEVERITY_THRESHOLDS[^=]*=\s*\(([^\n]+)\)/)?.[1] ?? "";
+  const backend = [...thresholds.matchAll(/\((\d+),\s*"(\w+)"\)/g)].map((m) => [Number(m[1]), m[2]]);
+  const format = readFileSync(join(frontend, "lib", "format.ts"), "utf8");
+  const start = format.indexOf("export function severityFor");
+  const severityFor = format.slice(start, format.indexOf("\n}", start));
+  const dashboard = [...severityFor.matchAll(/score >= (\d+)\) return "(\w+)"/g)].map((m) => [Number(m[1]), m[2]]);
+  assert.equal(backend.length, 3);
+  assert.deepEqual(dashboard, backend);
+});
+
+test("one broken panel can't blank the dashboard, and a broken screen offers a way back", () => {
+  const card = files.find((f) => f.name === "components/ui/card.tsx");
+  assert.match(card.text, /<PanelBoundary label=\{title\}>\{children\}<\/PanelBoundary>/);
+  const screen = files.find((f) => f.name === "app/error.tsx");
+  assert.ok(screen, "app/error.tsx is missing");
+  assert.match(screen.text, /onClick=\{reset\}/);
+});
+
 test("a block is never reported until the server has answered", () => {
   const dialog = files.find((f) => f.name === "components/review-dialog.tsx");
   const saved = dialog.text.indexOf("await decideRemediation");
@@ -191,11 +236,13 @@ test("nothing uses the Edge runtime, which Vercel Services reject", () => {
   assert.equal(allRoutes.filter((text) => /runtime\s*=\s*["'](?:edge|experimental-edge)["']/.test(text)).length, 0);
 });
 
-function readdirRoutes(dir) {
+function readdirRoutes(dir, withPaths = false) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) return readdirRoutes(path);
-    return name === "route.ts" ? [readFileSync(path, "utf8")] : [];
+    if (statSync(path).isDirectory()) return readdirRoutes(path, withPaths);
+    if (name !== "route.ts") return [];
+    const text = readFileSync(path, "utf8");
+    return [withPaths ? { path: relative(frontend, path).split(sep).join("/"), text } : text];
   });
 }
 

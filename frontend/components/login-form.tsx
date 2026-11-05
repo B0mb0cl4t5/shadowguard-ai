@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 
+import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
+
 import { Button } from "./ui/button";
 import { Notice } from "./ui/card";
 import { Input } from "./ui/input";
@@ -21,6 +23,7 @@ export function LoginForm({ next }: { next: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
+        signal: AbortSignal.timeout(TIMEOUT_MS.request),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -28,7 +31,7 @@ export function LoginForm({ next }: { next: string }) {
       }
       window.location.assign(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(failureMessage(err, "Sign-in failed"));
       setPassword("");
     } finally {
       setBusy(false);
