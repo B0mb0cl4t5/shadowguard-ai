@@ -112,6 +112,7 @@ The usernames are `admin` and `viewer` unless you set `DASHBOARD_ADMIN_USERNAME`
    | `TEAMS_WEBHOOK_URL` | optional |
    | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
    | `TRUST_PROXY` | `true` on Vercel (see below) |
+   | `TELEMETRY_RETENTION_DAYS` | optional: days raw traffic events are kept, default `90` (never shorter than the exposure window) |
    | `DEMO_SIGN_IN` | optional: `admin` or `viewer` adds a one-click "Open the demo" button. **Anyone with the link can then sign in**, so set it only while recording a demo, then delete it and redeploy |
 
    Do **not** set `SHADOWGUARD_API_URL`. The service binding generates it.
@@ -160,6 +161,10 @@ To reset the demo before going on stage, re-run `python backend/scripts/init_db.
 **Rotate a key:** generate a new one, add its digest to `SHADOWGUARD_API_KEYS` *alongside* the old one, redeploy, swap the raw key variable, redeploy, then remove the old digest. No downtime.
 
 **Sign everyone out:** change `SESSION_SECRET` and redeploy. Every existing session becomes invalid.
+
+**Retention:** the API deletes raw traffic older than `TELEMETRY_RETENTION_DAYS` at most hourly while traffic arrives. So it also holds when traffic stops, schedule `DATABASE_URL=… python backend/scripts/prune_telemetry.py` daily (a GitHub Actions schedule or any cron works).
+
+**If a secret leaks:** follow the procedure in [SECURITY.md](SECURITY.md#if-a-secret-leaks).
 
 **Before each release:** `npm run audit` (npm audit + pip-audit) and `npm test`.
 

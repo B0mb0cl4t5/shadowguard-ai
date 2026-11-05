@@ -63,6 +63,9 @@ class Settings:
     # all of them together; the dashboard caps each user before it gets here.
     rate_limit_per_minute: int = 600
     exposure_window_days: int = 7
+    # Raw traffic events are the only rows holding a (hashed) person, so they are deleted after
+    # this many days. Always longer than the exposure window, which scoring reads.
+    telemetry_retention_days: int = 90
     trust_proxy: bool = False
     teams_webhook_url: str | None = None
     approved_regions: tuple[str, ...] = ("MY", "SG", "EU")
@@ -87,6 +90,7 @@ def get_settings() -> Settings:
     webhook = os.getenv("TEAMS_WEBHOOK_URL", "").strip() or None
     if webhook and not webhook.startswith("https://"):
         webhook = None  # never send notifications over plaintext HTTP
+    window = _int("EXPOSURE_WINDOW_DAYS", 7, 1, 30)
     return Settings(
         database_url=os.getenv("DATABASE_URL", "").strip(),
         api_keys=_parse_api_keys(os.getenv("SHADOWGUARD_API_KEYS", "")),
@@ -94,7 +98,8 @@ def get_settings() -> Settings:
         enable_docs=_bool("ENABLE_DOCS", False),
         allowed_origins=origins,
         rate_limit_per_minute=_int("RATE_LIMIT_PER_MINUTE", 600, 10, 10_000),
-        exposure_window_days=_int("EXPOSURE_WINDOW_DAYS", 7, 1, 30),
+        exposure_window_days=window,
+        telemetry_retention_days=max(window + 1, _int("TELEMETRY_RETENTION_DAYS", 90, 1, 3650)),
         trust_proxy=_bool("TRUST_PROXY", False),
         teams_webhook_url=webhook,
     )

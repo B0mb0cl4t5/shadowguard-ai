@@ -162,7 +162,7 @@ Open with the scenario: *a lecturer uploads a whole class's essays and marks int
 
 ## Capturing real traffic from a laptop
 
-`collector/shadowguard_collector.py` is a small local web proxy (standard library only, nothing to install). A browser pointed at it is reported to ShadowGuard whenever it connects to a known AI tool, with the same metadata a university web proxy logs: the site, when, and the bytes each way. It never decrypts anything: for HTTPS a proxy only sees the site name. Other sites pass straight through and are not recorded. The account name is hashed on the laptop before anything is sent.
+`collector/shadowguard_collector.py` is a small local web proxy (standard library only, nothing to install). A browser pointed at it is reported to ShadowGuard whenever it connects to a known AI tool, with the same metadata a university web proxy logs: the site, when, and the bytes each way. It never decrypts anything: for HTTPS a proxy only sees the site name. Other sites pass straight through and are not recorded. The account name is hashed on the laptop before anything is sent, mixed with a secret salt that never leaves it (`SHADOWGUARD_HASH_SALT`, or a random one created on first run in `~/.shadowguard/collector-salt`). That keeps it pseudonymous: without the salt, nobody can work out a name by hashing guesses.
 
 ```bash
 set SHADOWGUARD_INGEST_KEY=sg_ingest_...      # an 'ingest' key
@@ -269,4 +269,4 @@ Live policy test (dry run): a clean sample scores Low 4; one injected sentence i
 
 ---
 
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** to put it on Vercel and **[SECURITY.md](SECURITY.md)** for the OWASP Top 10 mapping.
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** to put it on Vercel, **[SECURITY.md](SECURITY.md)** for the OWASP Top 10 mapping and what to do if a secret leaks, and **[docs/privacy-impact-assessment.md](docs/privacy-impact-assessment.md)** for the privacy assessment template a university's data protection officer fills in.

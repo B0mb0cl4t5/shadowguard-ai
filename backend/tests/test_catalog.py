@@ -30,3 +30,19 @@ def test_collector_watches_exactly_the_catalogued_domains():
     from shadowguard_collector import AI_DOMAINS
 
     assert set(AI_DOMAINS) == {domain for _, _, domain, _ in REAL_APPS}
+
+
+def test_collector_hashes_with_a_secret_salt_it_keeps(tmp_path):
+    """Hashing a guessable account name without a secret could be reversed by trying names."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "collector"))
+    from shadowguard_collector import collector_salt
+
+    salt_file = tmp_path / "sub" / "collector-salt"
+    first = collector_salt(env={}, path=salt_file)
+    assert len(first) == 64 and int(first, 16) >= 0  # 256 random bits
+    assert collector_salt(env={}, path=salt_file) == first  # kept, so the same person keeps one hash
+    assert collector_salt(env={"SHADOWGUARD_HASH_SALT": "from-the-environment"}, path=salt_file) == "from-the-environment"
+    salt_file.write_text("", encoding="ascii")
+    assert len(collector_salt(env={}, path=salt_file)) == 64  # an emptied file gets a fresh secret

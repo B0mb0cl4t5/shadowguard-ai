@@ -274,6 +274,17 @@ def test_rate_limit_table_matches_schema_and_migration():
         assert statement.replace(" IF NOT EXISTS", "") in schema
 
 
+def test_retention_never_drops_below_the_exposure_window(monkeypatch):
+    """Scoring reads the last EXPOSURE_WINDOW_DAYS of traffic, so retention can't delete it first."""
+    from shadowguard.config import get_settings
+
+    monkeypatch.setenv("EXPOSURE_WINDOW_DAYS", "7")
+    monkeypatch.setenv("TELEMETRY_RETENTION_DAYS", "3")
+    assert get_settings.__wrapped__().telemetry_retention_days == 8
+    monkeypatch.delenv("TELEMETRY_RETENTION_DAYS")
+    assert get_settings.__wrapped__().telemetry_retention_days == 90
+
+
 def test_forwarded_address_is_trusted_only_behind_a_known_proxy(monkeypatch):
     import dataclasses
     from types import SimpleNamespace

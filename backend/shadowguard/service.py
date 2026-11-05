@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -70,6 +71,7 @@ def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> 
                      ev.dest_ip, ev.source))
     if rows:
         repo.insert_events(conn, rows)
+        prune_old_telemetry(conn)
     actions = recompute_pairs(conn, sorted(touched))
     if touched:
         # Today's point on the trend chart comes from the snapshot, so it moves with live traffic.
@@ -81,6 +83,25 @@ def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> 
         "pairs_rescored": len(touched),
         "remediation_actions": actions,
     }
+
+
+TELEMETRY_PRUNE_EVERY_SECONDS = 3_600
+_last_telemetry_prune: float | None = None
+
+
+def prune_old_telemetry(conn: psycopg.Connection) -> int:
+    """Apply the retention period to raw traffic, the only rows that hold a (hashed) person.
+
+    Runs at most hourly per instance, on an ingest that brings new data; scripts/prune_telemetry.py
+    applies it on a schedule when no traffic arrives. Scoring reads only the exposure window, and the
+    trend chart reads daily snapshots that hold no one, so neither loses anything.
+    """
+    global _last_telemetry_prune
+    now = time.monotonic()
+    if _last_telemetry_prune is not None and now - _last_telemetry_prune < TELEMETRY_PRUNE_EVERY_SECONDS:
+        return 0
+    _last_telemetry_prune = now
+    return repo.prune_telemetry(conn, get_settings().telemetry_retention_days)
 
 
 # ------------------------------------------------------------ stage 3 + 4: score, respond

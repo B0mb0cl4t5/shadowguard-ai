@@ -165,7 +165,7 @@ export function VendorDrawer({
             <h3 className="text-sm font-semibold text-ink">Exposure by department</h3>
             <p className="mb-3 text-xs text-muted">
               Posture × department data sensitivity × usage spread over the last <span className="font-mono">{exposureWindowDays}</span> days. Users are
-              counted from hashed IDs, so ShadowGuard never knows who they are.
+              counted from IDs hashed with a secret at the source, so ShadowGuard never sees who they are.
             </p>
             <ul className="space-y-2">
               {app.departments.map((d) => (

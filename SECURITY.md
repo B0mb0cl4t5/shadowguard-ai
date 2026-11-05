@@ -44,6 +44,8 @@ ShadowGuard is a security product, so every control below is implemented in code
 - [x] **Safe live testing.** The admin "Live policy test" runs as a dry run (`persist:false`): full analysis, zero database writes, still audit-logged. Test: `test_dry_run_analysis_changes_nothing`.
 - [x] **No nagging loops.** A rejected block is not re-proposed for 7 days; nudges are rate-limited to one per pair per 24 h. Tests: `test_rejected_block_not_reproposed_for_a_week`, `test_surge_creates_incident_ticket_nudge_and_pending_block`.
 - [x] **Privacy by design.** Metadata only (domain, department, time, bytes out and in, the vendor's IP, hashed user id). No URLs, no content, no TLS interception, no client IPs: `dest_ip` must be a public address, so an internal one sent by mistake is refused. Tests: `test_telemetry_validation_rejects`. The schema rejects anything that is not a SHA-256 hex digest in `user_hash`.
+- [x] **Pseudonymous, said plainly.** A hashed ID is pseudonymous personal data, not anonymous: anyone holding the salt could hash candidate names and compare. So the hash is made at the source with a secret salt that never reaches ShadowGuard (the laptop collector creates a random one on first run), the dashboard and live feed never show a hash, and small counts stay counts. Test: `test_collector_hashes_with_a_secret_salt_it_keeps`.
+- [x] **Storage limitation.** Raw traffic events, the only rows holding a hashed person, are deleted after `TELEMETRY_RETENTION_DAYS` (default 90, never shorter than the exposure window scoring reads). The API applies it at most hourly while traffic arrives, and `backend/scripts/prune_telemetry.py` applies it on a schedule. Incidents, decisions and daily snapshots hold no person and are kept as the record. Tests: `test_old_traffic_is_deleted_after_the_retention_period`, `test_retention_never_drops_below_the_exposure_window`.
 - [x] **Lookalike-domain resistance.** `notsummarix.ai` and `summarix.ai.evil.com` do not match `summarix.ai`. Test: `test_domain_matching_does_not_accept_lookalikes`.
 - [x] **Fail closed.** No API keys configured → 503 for everything. No session secret → nobody can sign in.
 - [x] **Nothing slow runs inside a transaction.** A Teams nudge is recorded as `failed` with the rest of the response and sent only after the transaction commits (`db.after_commit`), then marked `executed` when Teams accepts it; a slow Teams delays one response but never holds a connection or its locks. A crash in between leaves `failed`, which is true. Tests: `test_teams_nudge_is_sent_only_after_the_transaction_commits`, `test_a_nudge_teams_refused_stays_failed`, `test_after_commit_runs_only_once_the_transaction_commits`.
@@ -104,6 +106,36 @@ ShadowGuard is a security product, so every control below is implemented in code
 - **Blocks are recorded, not enforced.** An approved block is stored and audited but not pushed to a firewall or proxy; that integration (FortiGate or the university's proxy API) is the next step.
 - **Two shared logins, not individual accounts.** One admin and one viewer login are fine for a demo; production should use the university's SSO (OIDC / Microsoft Entra ID) so decisions are attributable to a named person.
 - **`style-src 'unsafe-inline'`.** Needed for React style attributes; scripts remain nonce-locked.
+- **The lawful basis is the university's to decide.** Code can minimise and protect the data; it can't decide whether monitoring staff traffic to AI tools is lawful, or what staff must be told. [docs/privacy-impact-assessment.md](docs/privacy-impact-assessment.md) is a template for the data protection officer, pre-filled with what ShadowGuard collects and keeps.
+
+## If a secret leaks
+
+Contain it first, then check what it was used for, then tell the right people. Every step ends in a redeploy, because Vercel reads environment variables when a deployment starts.
+
+| Leaked | What someone could do | Contain it |
+|---|---|---|
+| `SESSION_SECRET` | Forge a signed-in session for either role | Set a new value (`npm run gen-secret`). Every session ends and everyone signs in again. |
+| A dashboard password | Sign in with that role | Choose a new one (`npm run hash-password`), replace `DASHBOARD_ADMIN_CODE_HASH` or `DASHBOARD_VIEWER_CODE_HASH`, and rotate `SESSION_SECRET` too so sessions already open end. |
+| The raw admin or viewer API key | Call the backend with that role wherever it is reachable (on Vercel, only `/api/v1/telemetry` is public) | Make a new key (`python backend/scripts/create_api_key.py admin`), add its digest to `SHADOWGUARD_API_KEYS` beside the old one, put the raw key in `SHADOWGUARD_ADMIN_API_KEY` (or the viewer one), redeploy, then remove the old digest and redeploy again. |
+| A collector's ingest key | Send fake traffic | Delete that key's `ingest:` entry from `SHADOWGUARD_API_KEYS` and give the collector a new key. |
+| `DATABASE_URL` | Read and change everything | Reset the database password (Vercel → Storage → the database, or the Neon console) and check `DATABASE_URL` picked up the new one. |
+| `TEAMS_WEBHOOK_URL` | Post into that Teams channel | Delete the webhook in Teams, create a new one, and update the variable. |
+| `GEMINI_API_KEY` | Spend the Gemini quota | Revoke it in Google AI Studio and set a new one. |
+| A collector's salt | Test names against that collector's hashes | Delete `~/.shadowguard/collector-salt` (or change `SHADOWGUARD_HASH_SALT`). New hashes can't be linked to the old ones, which age out with the retention period. |
+
+**Check what it was used for.** Every change made through the API is in `audit_log` with the key's fingerprint, the first 12 hex characters of its SHA-256. Work it out without leaving the key in your shell history:
+
+```bash
+python -c "import getpass, hashlib; print(hashlib.sha256(getpass.getpass('Key: ').encode()).hexdigest()[:12])"
+```
+
+```sql
+SELECT at, actor_role, action, target FROM audit_log WHERE actor_key = '<fingerprint>' ORDER BY at DESC;
+```
+
+Sign-ins are in Vercel's runtime logs: search for `[auth]` (failed attempts, and every demo sign-in). Review any block decisions made in the window under *Remediation and reviews*; blocks aren't pushed to a firewall automatically, so reverse at the proxy anything that wasn't yours.
+
+**Tell the right people.** Report it to the university's IT security lead and data protection officer: what leaked, when, what it could reach, and what the audit log shows. Whether it is a personal data breach is the DPO's call. ShadowGuard holds pseudonymous IDs, department names and traffic metadata, never content; Malaysia's PDPA, as amended in 2024, requires notifying the Personal Data Protection Commissioner of a personal data breach, and the people affected where it may cause them significant harm, on the timelines its guidelines set.
 
 ## Reporting a vulnerability
 

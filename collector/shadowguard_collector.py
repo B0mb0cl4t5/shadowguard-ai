@@ -15,6 +15,9 @@ Then start a browser that uses it, in its own profile so your normal browsing is
 
 --dry-run prints the events instead of sending them, and needs no key.
 Standard library only: nothing to install.
+
+The account name is sent only as a SHA-256 hash mixed with a secret salt (collector_salt),
+which keeps it pseudonymous: without the salt, nobody can test names against the hash.
 """
 
 from __future__ import annotations
@@ -26,13 +29,14 @@ import hashlib
 import ipaddress
 import json
 import os
-import socket
+import secrets
 import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlsplit
 
 # The catalogued AI tools (backend/scripts/real_catalog.py). A subdomain counts:
@@ -45,6 +49,33 @@ AI_DOMAINS = (
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 MAX_BATCH = 500
 BUFFER = 64 * 1024
+SALT_FILE = Path.home() / ".shadowguard" / "collector-salt"
+
+
+def collector_salt(env=os.environ, path: Path = SALT_FILE) -> str:
+    """The secret mixed into the account name before it is hashed.
+
+    A hash of guessable values (a computer name and a username) can be reversed by trying
+    names, so the hash is pseudonymous only while this stays secret. It comes from
+    SHADOWGUARD_HASH_SALT, or a random value made on first run and kept in your user folder.
+    It never leaves this computer.
+    """
+    if env.get("SHADOWGUARD_HASH_SALT"):
+        return env["SHADOWGUARD_HASH_SALT"]
+    try:
+        saved = path.read_text(encoding="ascii").strip()
+        if saved:
+            return saved
+    except FileNotFoundError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    salt = secrets.token_hex(32)
+    path.write_text(salt, encoding="ascii")
+    try:
+        os.chmod(path, 0o600)  # owner only where the OS supports it; a Windows user folder is private already
+    except OSError:
+        pass
+    return salt
 
 
 def ai_domain(host: str) -> str | None:
@@ -228,9 +259,8 @@ def main() -> None:
     if host not in LOCAL_HOSTS:
         sys.exit("Listen on this computer only (127.0.0.1), so nobody else can use the proxy.")
 
-    # People stay anonymous: the account name is hashed here, before anything leaves this computer.
-    salt = os.getenv("SHADOWGUARD_HASH_SALT", socket.gethostname())
-    user_hash = hashlib.sha256(f"{salt}|{getpass.getuser()}".encode()).hexdigest()
+    # The account name is hashed here with a secret salt, before anything leaves this computer.
+    user_hash = hashlib.sha256(f"{collector_salt()}|{getpass.getuser()}".encode()).hexdigest()
 
     collector = Collector(args.api or None, key, args.department, user_hash, args.dry_run)
 
@@ -239,6 +269,8 @@ def main() -> None:
         print(f"ShadowGuard collector listening on {args.listen}. Department: {args.department}. "
               f"{'Dry run: nothing is sent.' if args.dry_run else 'Reporting to ' + args.api}", flush=True)
         print("Watching: " + ", ".join(AI_DOMAINS), flush=True)
+        if not os.getenv("SHADOWGUARD_HASH_SALT"):
+            print(f"Account names are hashed with the secret salt in {SALT_FILE} (not shown, never sent).", flush=True)
         async with server:
             await asyncio.gather(server.serve_forever(), collector.report_every(args.every))
 

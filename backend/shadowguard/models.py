@@ -62,7 +62,7 @@ class TelemetryEvent(StrictModel):
     @field_validator("dest_ip")
     @classmethod
     def _valid_dest_ip(cls, v: str | None) -> str | None:
-        """Staff stay anonymous: an internal address could identify a person, so it is refused."""
+        """An internal address could identify a member of staff, so it is refused."""
         if v is None:
             return None
         try:

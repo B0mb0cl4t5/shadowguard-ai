@@ -189,6 +189,30 @@ def test_mutations_are_audited(client, seeded_db):
     assert row == ("admin", "pipeline.recompute")
 
 
+def test_old_traffic_is_deleted_after_the_retention_period(client, seeded_db, monkeypatch):
+    import psycopg
+
+    from shadowguard import service
+
+    recent = "SELECT count(*) FROM telemetry_events WHERE observed_at >= NOW() - INTERVAL '90 days'"
+    with psycopg.connect(seeded_db, autocommit=True) as conn:
+        conn.execute("""
+            INSERT INTO telemetry_events (observed_at, department_id, user_hash, domain, app_id, bytes_out, source)
+            SELECT NOW() - INTERVAL '200 days', department_id, user_hash, domain, app_id, bytes_out, source
+            FROM telemetry_events LIMIT 1
+        """)
+        recent_before = conn.execute(recent).fetchone()[0]
+    monkeypatch.setattr(service, "_last_telemetry_prune", None)
+    r = client.post("/api/v1/telemetry", json={"events": ev("paperpilot.ai", "Examinations & Assessment", 1)},
+                    headers=headers("ingest"))
+    assert r.status_code == 202
+    with psycopg.connect(seeded_db) as conn:
+        old = conn.execute("SELECT count(*) FROM telemetry_events WHERE observed_at < NOW() - INTERVAL '90 days'").fetchone()[0]
+        recent_after = conn.execute(recent).fetchone()[0]
+    assert old == 0
+    assert recent_after == recent_before + 1  # only the expired event went; the new one arrived
+
+
 def _limit(bucket: str, limit: int, window: int = 60) -> dict:
     return {"bucket": bucket, "limit": limit, "window_seconds": window}
 

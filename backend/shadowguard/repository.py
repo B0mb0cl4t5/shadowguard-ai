@@ -225,8 +225,8 @@ def shadow_apps(conn: psycopg.Connection, severity: str | None = None, sort: str
 def live_feed(conn: psycopg.Connection, after_id: int, limit: int = 20) -> dict[str, Any]:
     """The newest traffic to unapproved tools, and a revision that changes whenever the dashboard would.
 
-    Metadata only, and never the hashed user id: a live feed of one person's activity
-    is exactly what the anonymity rule exists to prevent.
+    Metadata only, and never the hashed user id: hashed IDs are pseudonymous, and a live
+    feed of one person's activity is exactly what the dashboard must never show.
     """
     events = conn.execute(
         """
@@ -610,6 +610,13 @@ def rate_limit_hit(conn: psycopg.Connection, checks: list[tuple[str, int, int]])
         """,
         (buckets, limits, windows),
     ).fetchone()["allowed"]
+
+
+def prune_telemetry(conn: psycopg.Connection, keep_days: int) -> int:
+    """Delete raw traffic events older than the retention period; returns how many went."""
+    return conn.execute(
+        "DELETE FROM telemetry_events WHERE observed_at < NOW() - make_interval(days => %s)", (keep_days,)
+    ).rowcount
 
 
 def prune_rate_limits(conn: psycopg.Connection, keep_seconds: int) -> None:
