@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { sharedRateLimit } from "@/lib/backend";
 import { roleForCredentials } from "@/lib/password";
-import { allow } from "@/lib/rate-limit";
+import { allowShared } from "@/lib/rate-limit";
 import { clientIp, isSameOrigin } from "@/lib/request-guard";
 import { createSessionToken, SESSION_TTL_SECONDS, sessionCookieName } from "@/lib/session";
 import type { Role } from "@/lib/types";
@@ -10,7 +11,8 @@ export const runtime = "nodejs";
 
 /**
  * Sign-in with a username and password. OWASP A07:
- *   - 5 attempts per minute and 30 per hour per client IP.
+ *   - 5 attempts per minute and 30 per hour per client IP, counted once across every
+ *     serverless instance (lib/rate-limit.ts `allowShared`).
  *   - Both role hashes are always checked, so timing does not reveal which
  *     role a near-miss belonged to or whether the username exists.
  *   - The same generic error for every failure.
@@ -20,7 +22,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Cross-site request blocked" }, { status: 403 });
   }
   const ip = clientIp(request);
-  if (!allow(`login:m:${ip}`, 5, 60_000) || !allow(`login:h:${ip}`, 30, 3_600_000)) {
+  const allowed = await allowShared(
+    [
+      { key: `login:m:${ip}`, limit: 5, windowMs: 60_000 },
+      { key: `login:h:${ip}`, limit: 30, windowMs: 3_600_000 },
+    ],
+    sharedRateLimit,
+  );
+  if (!allowed) {
     return NextResponse.json({ detail: "Too many attempts. Try again shortly." }, { status: 429 });
   }
 

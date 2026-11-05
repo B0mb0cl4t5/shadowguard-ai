@@ -6,6 +6,7 @@ Discover (ingest_telemetry) → Read the terms (analyse_vendor)
 
 from __future__ import annotations
 
+import random
 from datetime import datetime, timezone
 from typing import Any
 
@@ -327,3 +328,25 @@ def dashboard(conn: psycopg.Connection) -> dict[str, Any]:
         "departments": repo.department_exposure(conn),
         "remediations": repo.recent_remediations(conn, 30),
     }
+
+
+# ------------------------------------------------------------------ shared rate limits
+
+RATE_LIMIT_KEEP_SECONDS = 7_200  # twice the longest window a caller may ask for
+RATE_LIMIT_PRUNE_CHANCE = 0.02
+_rate_limit_table_ready = False
+
+
+def shared_rate_limit(conn: psycopg.Connection, checks: list[tuple[str, int, int]]) -> bool:
+    """One count per bucket for every serverless instance, kept in the database.
+
+    In-memory limits reset per instance, so a client spreading attempts across instances
+    would get each instance's full allowance. Old hits are pruned now and then.
+    """
+    global _rate_limit_table_ready
+    if not _rate_limit_table_ready:
+        repo.ensure_rate_limit_table(conn)
+        _rate_limit_table_ready = True
+    if random.random() < RATE_LIMIT_PRUNE_CHANCE:
+        repo.prune_rate_limits(conn, RATE_LIMIT_KEEP_SECONDS)
+    return repo.rate_limit_hit(conn, checks)

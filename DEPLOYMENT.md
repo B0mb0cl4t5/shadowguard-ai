@@ -38,7 +38,9 @@ export DATABASE_URL="<the owner's pooled string>"
 python backend/scripts/migrate_db.py
 ```
 
-The same command adds the real AI tools (`002_real_ai_tools.sql`), so traffic from the laptop collector is recognised. Older events have no inbound bytes or destination IP, because those were never recorded. They fill in as your collector sends `bytes_in` and `dest_ip`.
+The same command adds the real AI tools (`002_real_ai_tools.sql`), so traffic from the laptop collector is recognised, and the shared sign-in counters (`003_shared_rate_limits.sql`). Older events have no inbound bytes or destination IP, because those were never recorded. They fill in as your collector sends `bytes_in` and `dest_ip`.
+
+The backend also creates the counters table on first use if no migration has, as long as its role may create tables. With the least-privilege role below it can't, so run the migration as the owner; until then sign-in falls back to the per-instance limit.
 
 ### Recommended: a least-privilege role for the app (OWASP A01/A05)
 
@@ -49,7 +51,7 @@ CREATE ROLE shadowguard_app LOGIN PASSWORD 'use-a-long-random-password';
 GRANT CONNECT ON DATABASE neondb TO shadowguard_app;      -- your database name
 GRANT USAGE ON SCHEMA public TO shadowguard_app;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO shadowguard_app;
-GRANT DELETE ON app_exposure TO shadowguard_app;          -- the only delete the app performs
+GRANT DELETE ON app_exposure, rate_limit_hits TO shadowguard_app;  -- the only deletes the app performs
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shadowguard_app;
 REVOKE UPDATE ON audit_log FROM shadowguard_app;          -- audit log is append-only
 REVOKE UPDATE ON policy_versions FROM shadowguard_app;    -- stored policy versions are write-once
@@ -116,7 +118,7 @@ The usernames are `admin` and `viewer` unless you set `DASHBOARD_ADMIN_USERNAME`
 
    **`TRUST_PROXY`:** the backend rate-limits and locks out by client IP. With `TRUST_PROXY=true` it reads the IP from `X-Forwarded-For`, which is only safe where the platform sets that header itself and discards whatever the client sent. Vercel's request-header documentation says it does; confirm it for your plan. Without it, every request arrives from the platform's own address, so all callers share one rate limit, and 20 bad API keys from anyone lock everyone out for a minute.
 
-   **Policy fetching:** the backend fetches vendor privacy pages and refuses any host that resolves to a private address, but a DNS-rebinding attacker can change the answer between that check and the connection (`shadowguard/fetcher.py` states the residual risk; `backend/tests/test_fetcher.py` covers the check). To close it fully, send outbound requests through a forward proxy you run that applies the same rules (HTTPS on port 443, public addresses only).
+   **Policy fetching:** the backend fetches vendor privacy pages and refuses any host that resolves to a private address. Each request then connects to the address it checked, with the hostname in SNI and `Host`, so a DNS-rebinding attacker has no second lookup to swap (`shadowguard/fetcher.py`; tests in `backend/tests/test_fetcher.py`). A forward proxy that applies the same rules (HTTPS on port 443, public addresses only) remains a sensible extra layer if your network policy calls for one.
 
 5. **Deploy**, open the URL, sign in as `admin` with the admin password.
 6. Check the routing:

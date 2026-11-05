@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { SharedCheck } from "./rate-limit";
+
 /**
  * Server-only client for the ShadowGuard Python API.
  *
@@ -76,4 +78,14 @@ export async function backendFetch<T>(
     throw new BackendError(res.status, detail);
   }
   return (await res.json()) as T;
+}
+
+/** The shared sign-in count (see `allowShared` in lib/rate-limit.ts). Buckets arrive already hashed. */
+export async function sharedRateLimit(checks: SharedCheck[]): Promise<boolean> {
+  const { allowed } = await backendFetch<{ allowed: boolean }>("/api/v1/rate-limit", {
+    role: "viewer",
+    method: "POST",
+    body: { checks: checks.map((c) => ({ bucket: c.bucket, limit: c.limit, window_seconds: c.windowSeconds })) },
+  });
+  return allowed === true;
 }

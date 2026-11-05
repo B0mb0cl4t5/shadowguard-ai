@@ -60,11 +60,13 @@ def _lookup(raw_key: str) -> Principal | None:
 
 
 class SlidingWindowLimiter:
-    """In-memory sliding-window limiter.
+    """In-memory sliding-window limiter for API requests.
 
-    Serverless caveat: each warm Vercel instance has its own memory, so this
-    limits per instance, not globally (see SECURITY.md, known limitations). It
-    still stops a single client hammering a warm instance, which is the common case.
+    Each warm Vercel instance has its own memory, so these limits are per instance.
+    That is enough here: API keys are 256-bit random values that can't be guessed, so
+    the failure lockout controls noise rather than guarding a guessable secret. The
+    dashboard's password sign-in, which is guessable, uses the database-backed limit
+    shared by every instance (``service.shared_rate_limit``).
     """
 
     def __init__(self) -> None:
@@ -121,7 +123,10 @@ def _rejected_key(request: Request, ip: str) -> HTTPException:
 def authenticate(request: Request, api_key: str | None = Depends(api_key_header)) -> Principal:
     settings = get_settings()
     ip = client_ip(request)
-    if not limiter.allow(f"auth:{ip}", settings.rate_limit_per_minute):
+    # Shared sign-in checks count separately, so a flood of sign-in attempts against the
+    # dashboard can't use up the allowance its own data requests need.
+    group = "limits" if request.url.path == "/api/v1/rate-limit" else "api"
+    if not limiter.allow(f"auth:{group}:{ip}", settings.rate_limit_per_minute):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests")
     if not settings.api_keys:
         # Fail closed: an unconfigured deployment serves nothing.
@@ -136,7 +141,7 @@ def authenticate(request: Request, api_key: str | None = Depends(api_key_header)
     principal = _lookup(api_key)
     if principal is None:
         raise _rejected_key(request, ip)
-    if not limiter.allow(f"key:{principal.key_fingerprint}", settings.rate_limit_per_minute):
+    if not limiter.allow(f"key:{group}:{principal.key_fingerprint}", settings.rate_limit_per_minute):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests")
     return principal
 

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
-from conftest import headers
+from conftest import ROOT, headers
 from shadowguard import repository as repo
 from shadowguard.config import _parse_api_keys
 from shadowguard.db import DatabaseNotConfigured, validate_database_url
@@ -241,6 +241,45 @@ def test_failed_key_attempts_are_logged_without_the_secret(client, caplog, sent)
 def test_viewer_cannot_approve(client):
     r = client.post("/api/v1/remediations/1/decision", json={"decision": "approve"}, headers=headers("viewer"))
     assert r.status_code == 403
+
+
+# --- OWASP A07: shared sign-in limits -------------------------------------------
+
+def _limits(bucket, limit=5, window=60):
+    return {"checks": [{"bucket": bucket, "limit": limit, "window_seconds": window}]}
+
+
+def test_shared_rate_limit_takes_only_hashed_buckets(client):
+    """The dashboard server hashes bucket names, so a raw IP is refused rather than stored."""
+    for bucket in ["login:m:203.0.113.5", "A" * 64, "a" * 63]:
+        assert client.post("/api/v1/rate-limit", json=_limits(bucket), headers=headers("viewer")).status_code == 422
+    # A window longer than an hour would outlive the pruning, so it's refused too.
+    assert client.post("/api/v1/rate-limit", json=_limits(HASH, window=7200), headers=headers("viewer")).status_code == 422
+
+
+def test_shared_rate_limit_needs_a_dashboard_key(client):
+    assert client.post("/api/v1/rate-limit", json=_limits(HASH)).status_code == 401
+    assert client.post("/api/v1/rate-limit", json=_limits(HASH), headers=headers("ingest")).status_code == 403
+
+
+def test_rate_limit_table_matches_schema_and_migration():
+    """The backend can create the table itself, so its copy must match the other two."""
+    flat = lambda text: " ".join(text.split())
+    migration = flat((ROOT / "database" / "migrations" / "003_shared_rate_limits.sql").read_text())
+    schema = flat((ROOT / "database" / "schema.sql").read_text())
+    statements = [flat(s) for s in repo.RATE_LIMIT_TABLE.split(";") if s.strip()]
+    assert len(statements) == 2
+    for statement in statements:
+        assert statement in migration
+        assert statement.replace(" IF NOT EXISTS", "") in schema
+
+
+def test_sign_in_checks_have_their_own_request_allowance():
+    """A flood of sign-in attempts must not use up the dashboard's allowance for its own data."""
+    from shadowguard import security
+
+    source = inspect.getsource(security.authenticate)
+    assert 'f"auth:{group}:{ip}"' in source and 'f"key:{group}:{principal.key_fingerprint}"' in source
 
 
 def test_live_feed_needs_a_key(client):

@@ -96,6 +96,18 @@ class AnalyseRequest(StrictModel):
     )
 
 
+class RateLimitCheck(StrictModel):
+    """One shared limit. The caller hashes the bucket name, so no client IP reaches the database."""
+
+    bucket: str = Field(pattern=r"^[0-9a-f]{64}$")
+    limit: int = Field(ge=1, le=1000)
+    window_seconds: int = Field(ge=1, le=3600)
+
+
+class RateLimitRequest(StrictModel):
+    checks: list[RateLimitCheck] = Field(min_length=1, max_length=4)
+
+
 class DecisionRequest(StrictModel):
     decision: Literal["approve", "reject"]
     note: str = Field(default="", max_length=500)

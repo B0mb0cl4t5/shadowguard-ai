@@ -17,6 +17,7 @@
 
 BEGIN;
 
+DROP TABLE IF EXISTS rate_limit_hits     CASCADE;
 DROP TABLE IF EXISTS audit_log           CASCADE;
 DROP TABLE IF EXISTS remediation_actions CASCADE;
 DROP TABLE IF EXISTS security_incidents  CASCADE;
@@ -219,5 +220,16 @@ CREATE TABLE audit_log (
     detail      JSONB        NOT NULL DEFAULT '{}'::jsonb
 );
 CREATE INDEX idx_audit_at ON audit_log (at DESC);
+
+-- -----------------------------------------------------------------------------
+-- Shared sign-in rate limits, one count for every serverless instance (OWASP A07).
+-- Buckets are SHA-256 digests, so no client IP is stored. UNLOGGED: counters for
+-- windows of an hour or less need no crash safety, and it keeps writes cheap.
+-- -----------------------------------------------------------------------------
+CREATE UNLOGGED TABLE rate_limit_hits (
+    bucket  TEXT         NOT NULL,
+    hit_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_rate_limit_bucket_time ON rate_limit_hits (bucket, hit_at);
 
 COMMIT;

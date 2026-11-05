@@ -10,6 +10,7 @@ Route → role matrix (OWASP A01, Broken Access Control):
     POST /api/v1/vendors/{id}/analyze             admin  (persist=false → dry run, no writes)
     POST /api/v1/remediations/{id}/decision       admin
     POST /api/v1/pipeline/recompute               admin
+    POST /api/v1/rate-limit                       viewer, admin  (the dashboard server's shared sign-in limits)
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from . import repository as repo
 from .config import get_settings
 from .db import DatabaseNotConfigured, get_connection
 from .fetcher import FetchError, UnsafeURLError, fetch_policy_text
-from .models import AnalyseRequest, DecisionRequest, Severity, SortKey, TelemetryBatch
+from .models import AnalyseRequest, DecisionRequest, RateLimitRequest, Severity, SortKey, TelemetryBatch
 from .security import SECURITY_HEADERS, Principal, require_role
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -229,3 +230,14 @@ def recompute(principal: Principal = Depends(admin)):
         result = service.recompute_all(conn)
         repo.audit(conn, principal.role, principal.key_fingerprint, "pipeline.recompute", "all", result)
         return result
+
+
+@app.post("/api/v1/rate-limit")
+def rate_limit(body: RateLimitRequest, _: Principal = Depends(viewer)):
+    """Sign-in limits shared by every instance of the dashboard's server (OWASP A07).
+
+    Not audited: it moves counters, not decisions. Buckets arrive hashed, so no IP is stored.
+    """
+    with get_connection() as conn:
+        allowed = service.shared_rate_limit(conn, [(c.bucket, c.limit, c.window_seconds) for c in body.checks])
+    return {"allowed": allowed}

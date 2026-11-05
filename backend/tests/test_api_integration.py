@@ -126,6 +126,38 @@ def test_mutations_are_audited(client, seeded_db):
     assert row == ("admin", "pipeline.recompute")
 
 
+def _limit(bucket: str, limit: int, window: int = 60) -> dict:
+    return {"bucket": bucket, "limit": limit, "window_seconds": window}
+
+
+def test_shared_rate_limit_is_one_count_for_every_caller(client, seeded_db):
+    import psycopg
+
+    minute = hashlib.sha256(b"login:m:203.0.113.77").hexdigest()
+    hour = hashlib.sha256(b"login:h:203.0.113.77").hexdigest()
+    ask = lambda *checks: client.post("/api/v1/rate-limit", json={"checks": list(checks)}, headers=headers("viewer")).json()["allowed"]
+
+    assert [ask(_limit(minute, 3)) for _ in range(4)] == [True, True, True, False]
+    assert ask(_limit(hour, 30, 3600)) is True
+    # Every bucket needs room: a full one refuses the attempt even when the other has space.
+    assert ask(_limit(minute, 3), _limit(hour, 30, 3600)) is False
+    with psycopg.connect(seeded_db) as conn:
+        stored = {row[0] for row in conn.execute("SELECT DISTINCT bucket FROM rate_limit_hits")}
+    assert stored == {minute, hour}  # digests only, so no client IP is kept
+
+
+def test_shared_rate_limit_creates_its_table_if_missing(client, seeded_db, monkeypatch):
+    import psycopg
+
+    from shadowguard import service
+
+    with psycopg.connect(seeded_db, autocommit=True) as conn:
+        conn.execute("DROP TABLE rate_limit_hits")
+    monkeypatch.setattr(service, "_rate_limit_table_ready", False)
+    r = client.post("/api/v1/rate-limit", json={"checks": [_limit("b" * 64, 1)]}, headers=headers("viewer"))
+    assert r.status_code == 200 and r.json() == {"allowed": True}
+
+
 def test_recompute_is_consistent_with_seed(client, seeded_db):
     before = client.get("/api/v1/dashboard", headers=headers("viewer")).json()["kpis"]["exposure_index"]
     r = client.post("/api/v1/pipeline/recompute", headers=headers("admin"))

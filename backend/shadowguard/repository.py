@@ -561,3 +561,51 @@ def audit(conn: psycopg.Connection, role: str, key_fp: str, action: str, target:
 
 def now(conn: psycopg.Connection) -> datetime:
     return conn.execute("SELECT NOW() AS now").fetchone()["now"]
+
+
+# Shared rate-limit counters (OWASP A07). Also in database/schema.sql and migration 003;
+# kept here too because the function bundle ships without the database/ folder.
+RATE_LIMIT_TABLE = """
+CREATE UNLOGGED TABLE IF NOT EXISTS rate_limit_hits (
+    bucket  TEXT         NOT NULL,
+    hit_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_bucket_time ON rate_limit_hits (bucket, hit_at);
+"""
+
+
+def ensure_rate_limit_table(conn: psycopg.Connection) -> None:
+    """Create the counters table if no migration has, so a fresh deployment works straight away."""
+    if conn.execute("SELECT to_regclass('rate_limit_hits') IS NOT NULL AS present").fetchone()["present"]:
+        return
+    conn.execute(RATE_LIMIT_TABLE)
+
+
+def rate_limit_hit(conn: psycopg.Connection, checks: list[tuple[str, int, int]]) -> bool:
+    """Record a hit in each bucket that still has room; True when every bucket had room.
+
+    ``checks`` are (bucket digest, limit, window in seconds), all in one statement so it costs
+    one round trip. Two instances racing on a nearly full bucket can each let one more hit in,
+    so the overshoot is bounded by the number of instances, not by the client.
+    """
+    buckets, limits, windows = (list(column) for column in zip(*checks))
+    return conn.execute(
+        """
+        WITH asked AS (
+            SELECT * FROM unnest(%s::text[], %s::int[], %s::int[]) AS a(bucket, cap, secs)
+        ), counted AS (
+            SELECT a.bucket, a.cap,
+                   (SELECT count(*) FROM rate_limit_hits h
+                     WHERE h.bucket = a.bucket AND h.hit_at > NOW() - make_interval(secs => a.secs)) AS used
+            FROM asked a
+        ), recorded AS (
+            INSERT INTO rate_limit_hits (bucket) SELECT bucket FROM counted WHERE used < cap RETURNING 1
+        )
+        SELECT bool_and(used < cap) AS allowed FROM counted
+        """,
+        (buckets, limits, windows),
+    ).fetchone()["allowed"]
+
+
+def prune_rate_limits(conn: psycopg.Connection, keep_seconds: int) -> None:
+    conn.execute("DELETE FROM rate_limit_hits WHERE hit_at < NOW() - make_interval(secs => %s)", (keep_seconds,))

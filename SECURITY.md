@@ -66,7 +66,8 @@ ShadowGuard is a security product, so every control below is implemented in code
 
 ## A07 · Identification and Authentication Failures
 
-- [x] Sign-in rate limit: 5 per minute and 30 per hour per IP. The backend limits requests per IP and per valid key, and after 20 failed API-key attempts in a minute it refuses that IP. Test: `test_repeated_auth_failures_lock_out_that_ip_only`.
+- [x] Sign-in rate limit: 5 per minute and 30 per hour per IP, counted **once across every serverless instance** in the database (`rate_limit_hits`), so spreading guesses across instances gains nothing. Each instance checks its own memory first, which keeps floods off the database; bucket names are SHA-256 hashed before they leave the dashboard server, so no client IP is stored. If the shared count is unreachable the per-instance limit still applies; if the backend answers "too many requests" the attempt is refused. Tests: `frontend/lib/rate-limit.test.mjs`, `test_shared_rate_limit_is_one_count_for_every_caller`, `test_shared_rate_limit_takes_only_hashed_buckets`.
+- [x] The backend limits requests per IP and per valid key, and after 20 failed API-key attempts in a minute it refuses that IP. These limits are per instance on purpose: API keys are 256-bit random values that can't be guessed, so the lockout controls noise rather than guarding a guessable secret. Sign-in checks count separately from the dashboard's data requests, so a sign-in flood can't use up the dashboard's allowance. Tests: `test_repeated_auth_failures_lock_out_that_ip_only`, `test_sign_in_checks_have_their_own_request_allowance`.
 - [x] Same generic error for every sign-in failure; both role hashes are always checked so timing does not reveal which role a near-miss matched or whether a username exists. Test: `frontend/lib/password.test.mjs`.
 - [x] Session expiry enforced from inside the signed payload; `SESSION_SECRET` rotation signs everyone out.
 
@@ -84,7 +85,8 @@ ShadowGuard is a security product, so every control below is implemented in code
 ## A10 · Server-Side Request Forgery
 
 - [x] The vendor-policy fetcher allows `https` on port 443 only, no credentials in URLs, and requires **every** resolved address to be public. Loopback, private, link-local (including `169.254.169.254` cloud metadata), CGNAT and IPv4-mapped IPv6 are refused. `backend/shadowguard/fetcher.py`. Tests: `test_unsafe_url_shapes_rejected`, `test_private_and_metadata_addresses_rejected`, `test_analyse_rejects_ssrf_target`.
-- [x] Redirects are followed manually (max 3), each hop re-validated; 2 MB body cap, 10 s timeout, content-type allow-list.
+- [x] **DNS rebinding is closed by pinning.** Each request connects to an address from the same check that approved it, so the name is never resolved a second time; TLS still verifies the certificate against the hostname (sent as SNI and `Host`). Every request opens a fresh connection, so a redirect to another site on the same CDN address can't reuse a connection verified for the first. Tests: `test_dns_rebinding_cannot_redirect_the_request`, `test_each_redirect_is_rechecked_and_repinned`, `test_every_request_gets_its_own_tls_handshake`.
+- [x] Redirects are followed manually (max 3), each hop re-validated and re-pinned; 2 MB body cap, 10 s timeout, content-type allow-list.
 
 ---
 
@@ -94,8 +96,8 @@ ShadowGuard is a security product, so every control below is implemented in code
 - **Policy digests are not signatures.** The SHA-256 on a policy version is unkeyed and is not re-checked on read, so it does not prove a row was never edited by someone with owner access to the database.
 - **Services share one project's environment variables.** With both services in one Vercel project, `DATABASE_URL` is set alongside the raw viewer and admin keys and the session secret, so a compromise of either service's server code could read all of them. Browsers still see none of them. Use separate projects if you need that separation.
 - **Demo sign-in removes the password.** With `DEMO_SIGN_IN` set, anyone with the link signs in with that role in one click (`app/api/auth/demo`). It is off by default, the route answers 404 when off, the dashboard shows a "Demo mode" badge while it is on, and each use is logged. Set it only while recording, never on a deployment holding real data. Tests: `lib/demo-mode.test.mjs`.
-- **Rate limits are per serverless instance.** Vercel can run several warm instances, so the limits are not global. Back `lib/rate-limit.ts` and `security.SlidingWindowLimiter` with Upstash Redis / Vercel KV for a hard global limit.
-- **DNS rebinding in the fetcher.** There is a small window between the address check and the HTTP client's own resolution. Route the fetcher through an egress proxy that enforces the same allow-list for production use.
+- **The shared sign-in count can overshoot slightly.** Two instances checking a nearly full bucket at the same moment can each let one more attempt in, so the overshoot is bounded by the number of instances, not by the attacker. API-key limits stay per instance (see A07 for why).
+- **Blocks are recorded, not enforced.** An approved block is stored and audited but not pushed to a firewall or proxy; that integration (FortiGate or the university's proxy API) is the next step.
 - **Two shared logins, not individual accounts.** One admin and one viewer login are fine for a demo; production should use the university's SSO (OIDC / Microsoft Entra ID) so decisions are attributable to a named person.
 - **`style-src 'unsafe-inline'`.** Needed for React style attributes; scripts remain nonce-locked.
 
