@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 
 import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import { applyReducedMotion, loadReducedMotion } from "@/lib/use-reduced-motion";
+import { applyTheme, loadTheme, type Theme } from "@/lib/use-theme";
 import { useToast } from "@/lib/use-toast";
 import type { Dashboard, LiveEvent, LiveFeed, Remediation, Role, ShadowApp } from "@/lib/types";
 
@@ -13,7 +14,7 @@ import { TrendChart } from "./charts";
 import { CommandPalette } from "./command-palette";
 import { DecisionQueue } from "./decision-queue";
 import { DepartmentHeatmap } from "./department-heatmap";
-import { CloseIcon, CompareIcon, LogoutIcon, MotionIcon, PrinterIcon, RefreshIcon, ShieldMark } from "./icons";
+import { CloseIcon, CompareIcon, LogoutIcon, MoonIcon, MotionIcon, PrinterIcon, RefreshIcon, ShieldMark, SunIcon } from "./icons";
 import { DepartmentBars, DetectionColumns, RiskMap, SeverityRing, TrainingBreakdown } from "./insight-charts";
 import { KpiRow } from "./kpi-row";
 import { LiveTraffic } from "./live-traffic";
@@ -124,6 +125,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   const [isMac, setIsMac] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [theme, setTheme] = useState<Theme>("dark");
   const [layout, setLayout] = useState<OverviewLayout>("fit");
   const [compareApps, setCompareApps] = useState<ShadowApp[]>([]);
   const inFlight = useRef(false);
@@ -157,12 +159,23 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     const saved = loadReducedMotion();
     setReduceMotion(saved);
     document.documentElement.classList.toggle("reduce-motion", saved);
+    const savedTheme = loadTheme();
+    setTheme(savedTheme);
+    applyTheme(savedTheme, false);
   }, []);
 
   const toggleMotion = useCallback(() => {
     setReduceMotion((current) => {
       applyReducedMotion(!current);
       return !current;
+    });
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => {
+      const next: Theme = current === "dark" ? "light" : "dark";
+      applyTheme(next);
+      return next;
     });
   }, []);
 
@@ -438,6 +451,15 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             >
               <MotionIcon size={16} />
             </Button>
+            <Button
+              size="icon"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              variant="ghost"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+            </Button>
             {/* Only where it changes something: the Overview, on a window big enough to fit it on one screen. */}
             {tab === "overview" && (
               <Segmented
@@ -685,6 +707,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           role={role}
           apps={data.apps}
           pending={pending}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onOpenApp={setSelected}
           onReview={setReview}
           onFilter={(filter) => {

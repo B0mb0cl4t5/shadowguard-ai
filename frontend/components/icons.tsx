@@ -147,3 +147,16 @@ export const LogoutIcon = (p: IconProps) => (
     <path d="M10 8.5 6.5 12l3.5 3.5M6.5 12H15" />
   </svg>
 );
+
+export const SunIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2.5v2.2M12 19.3v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" />
+  </svg>
+);
+
+export const MoonIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M20.2 14.8A8 8 0 0 1 9.2 3.8a8 8 0 1 0 11 11Z" />
+  </svg>
+);

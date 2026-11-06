@@ -56,6 +56,51 @@
     --heat-3: rgb(244 63 94 / 0.62);
   }
 
+  html.light {
+    color-scheme: light;
+    --ground: #f1f5f9;
+    --surface: #ffffff;
+    --raised: #e2e8f0;
+    --raised-hover: #cbd5e1;
+    --row-hover: rgb(226 232 240 / 0.7);
+    --scrim: rgb(15 23 42 / 0.45);
+    --danger-fill: #e11d48;
+    --danger-fill-hover: #be123c;
+    --border: #cbd5e1;
+    --rule: #e2e8f0;
+    --control: #94a3b8;
+    --text: #0f172a;
+    --text-2: #334155;
+    --muted: #64748b;
+    --accent: #0d9488;
+    --data: #5b54a8;
+    --sev-critical: #e11d48;
+    --sev-high: #d97706;
+    --sev-moderate: #0284c7;
+    --sev-low: #059669;
+    --positive: #059669;
+    --negative: #be123c;
+    --warning: #b45309;
+    --pill-negative-bg: rgb(225 29 72 / 0.1);
+    --pill-negative-line: rgb(225 29 72 / 0.28);
+    --pill-negative-ink: #be123c;
+    --pill-warning-bg: rgb(217 119 6 / 0.12);
+    --pill-warning-line: rgb(217 119 6 / 0.3);
+    --pill-warning-ink: #92400e;
+    --pill-info-bg: rgb(2 132 199 / 0.1);
+    --pill-info-line: rgb(2 132 199 / 0.26);
+    --pill-info-ink: #0369a1;
+    --pill-positive-bg: rgb(5 150 105 / 0.1);
+    --pill-positive-line: rgb(5 150 105 / 0.28);
+    --pill-positive-ink: #047857;
+    --pill-neutral-bg: rgb(226 232 240 / 0.85);
+    --pill-neutral-line: rgb(148 163 184 / 0.6);
+    --pill-neutral-ink: #334155;
+    --heat-1: rgb(225 29 72 / 0.12);
+    --heat-2: rgb(225 29 72 / 0.28);
+    --heat-3: rgb(225 29 72 / 0.5);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
@@ -109,7 +154,8 @@
 
 @media print {
   /* White paper and dark ink, but the charts keep their colours: the bars and heatmap fills are the data. */
-  :root {
+  :root,
+  html.light {
     --ground: #ffffff;
     --surface: #ffffff;
     --raised: #e5e7eb;

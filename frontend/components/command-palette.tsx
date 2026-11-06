@@ -3,10 +3,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { SEVERITY_LABEL, SEVERITY_ORDER } from "@/lib/format";
+import type { Theme } from "@/lib/use-theme";
 import type { Remediation, Role, ShadowApp } from "@/lib/types";
 
 import type { SeverityFilter, SortKey } from "./apps-panel";
-import { BlockIcon, ChevronIcon, LogoutIcon, RadarIcon, RefreshIcon } from "./icons";
+import { BlockIcon, ChevronIcon, LogoutIcon, MoonIcon, RadarIcon, RefreshIcon, SunIcon } from "./icons";
 import { Badge, SeverityBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -38,6 +39,8 @@ export function CommandPalette({
   role,
   apps,
   pending,
+  theme = "dark",
+  onToggleTheme,
   onOpenApp,
   onReview,
   onFilter,
@@ -50,6 +53,8 @@ export function CommandPalette({
   role: Role;
   apps: ShadowApp[];
   pending: Remediation[];
+  theme?: Theme;
+  onToggleTheme?: () => void;
   onOpenApp: (app: ShadowApp) => void;
   onReview: (r: Remediation) => void;
   onFilter: (f: SeverityFilter) => void;
@@ -126,9 +131,19 @@ export function CommandPalette({
       icon: <RefreshIcon size={16} />,
       run: onRefresh,
     });
+    if (onToggleTheme) {
+      out.push({
+        id: "theme",
+        group: "Actions",
+        label: theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
+        keywords: "theme appearance dark light mode colour color",
+        icon: theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />,
+        run: onToggleTheme,
+      });
+    }
     out.push({ id: "logout", group: "Actions", label: "Sign out", keywords: "log out exit", icon: <LogoutIcon size={16} />, run: onLogout });
     return out;
-  }, [role, pending, apps, onReview, onOpenApp, onFilter, onSort, onRefresh, onLogout]);
+  }, [role, pending, apps, theme, onToggleTheme, onReview, onOpenApp, onFilter, onSort, onRefresh, onLogout]);
 
   // Every typed word must appear somewhere in the item's label or keywords.
   const visible = useMemo(() => {
