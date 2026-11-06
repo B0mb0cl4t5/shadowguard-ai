@@ -22,8 +22,10 @@
     --muted: #94a3b8;
     /* The teal of the ShadowGuard mark: the mark and the focus ring. */
     --accent: #2dd4bf;
-    /* The main data series, a hue no severity uses. */
-    --data: #a78bfa;
+    /* The main data series, a hue no severity uses, toned down (OKLCH 0.64 0.11 288) so it never
+       outshines an alert. Checked with the data-viz palette validator on --surface: within the dark
+       lightness band, and colour-blind separation from Moderate blue of ΔE 11 (the old #a78bfa was 5). */
+    --data: #8981cb;
     /* Severity, always shown with its word or score. Keep these separate from --data. */
     --sev-critical: #f43f5e;
     --sev-high: #f59e0b;
