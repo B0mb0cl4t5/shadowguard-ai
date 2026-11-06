@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { SEVERITY_LABEL, SEVERITY_STYLE, formatBytes } from "@/lib/format";
 import type { DataLocation, DestinationIp, LiveEvent, LiveFeed, Severity, ShadowApp } from "@/lib/types";
@@ -48,6 +48,8 @@ type Flow = {
 };
 
 const MAX_IPS = 4;
+/** Addresses listed in a dot's details card; the list under the map has the rest. */
+const TIP_IPS = 5;
 const PULSE_MS = 1400;
 /** The ring where a dot lands starts just before the dot fades out. */
 const LAND_AT = PULSE_MS * 0.9;
@@ -122,6 +124,28 @@ function usePulses(events: LiveEvent[]): Pulse[] {
 }
 
 /**
+ * A dot's details card, kept on the map: below dots near the top, above the rest. On a phone it
+ * spans the map's width; from tablet width up it sits beside the dot, flipped to the dot's left
+ * near the right edge.
+ */
+function DotDetails({ at, children }: { at: Point; children: ReactNode }) {
+  const x = (at[0] / W) * 100;
+  const y = (at[1] / H) * 100;
+  const below = y < 45;
+  const align = x > 62 ? "sm:-translate-x-full" : x < 30 ? "" : "sm:-translate-x-1/2";
+  return (
+    <div
+      id="map-dot-details"
+      role="tooltip"
+      className={`pointer-events-none absolute inset-x-0 z-10 rounded-md border border-control bg-raised p-3 text-xs sm:right-auto sm:left-[var(--dot-x)] sm:w-72 ${align} ${below ? "" : "-translate-y-full"}`}
+      style={{ "--dot-x": `${x}%`, top: `calc(${y}% ${below ? "+" : "-"} 22px)` } as CSSProperties}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Traffic between the campus and the region each vendor's policy says it stores data
  * in, with dots sized by outbound volume. A vendor with no stated region is listed but
  * not placed. IPs are listed rather than plotted: most are shared CDN addresses, so
@@ -139,7 +163,17 @@ export function TrafficMap({
   onOpen: (app: ShadowApp) => void;
 }) {
   const [active, setActive] = useState<DataLocation | null>(null);
+  // The dot whose details card is open: on hover, tap or keyboard focus, never hover alone.
+  const [tip, setTip] = useState<DataLocation | "campus" | null>(null);
   const pulses = usePulses(events);
+  const showTip = (id: DataLocation | "campus") => {
+    setTip(id);
+    setActive(id === "campus" ? null : id);
+  };
+  const hideTip = () => {
+    setTip(null);
+    setActive(null);
+  };
 
   const flows = useMemo<Flow[]>(() => {
     const ids = Object.keys(REGIONS) as DataLocation[];
@@ -289,14 +323,7 @@ export function TrafficMap({
           {placed.map((f, i) => {
             const [x, y] = f.at!;
             return (
-              <g
-                key={f.id}
-                onPointerEnter={() => setActive(f.id)}
-                onPointerLeave={() => setActive(null)}
-                style={{ opacity: dim(f) }}
-                className="transition-opacity"
-              >
-                <title>{`${f.label}: ${formatBytes(f.bytes)} out, ${formatBytes(f.bytesIn)} in, ${f.apps.length} ${f.apps.length === 1 ? "tool" : "tools"}`}</title>
+              <g key={f.id} style={{ opacity: dim(f) }} className="transition-opacity">
                 <circle
                   cx={x}
                   cy={y}
@@ -333,13 +360,86 @@ export function TrafficMap({
               className={`pointer-events-none absolute -translate-x-1/2 ${below ? "pt-1.5" : "-translate-y-full pb-1.5"}`}
               style={{ left: `${(f.at![0] / W) * 100}%`, top: `${((f.at![1] + (below ? size(f) : -size(f))) / H) * 100}%` }}
             >
-              <span className="block whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-ink">
-                {f.label} <span className="hidden font-mono text-ink2 sm:inline">{formatBytes(f.bytes)}</span>
-              </span>
+              {/* Just the name: the figures and addresses are in the dot's details card. */}
+              <span className="block whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-ink">{f.label}</span>
             </span>
           );
         })}
         <div className="absolute bottom-0 left-0 hidden sm:block">{stats}</div>
+
+        {/* Each dot opens a details card: a mouse points at it, a finger taps it, the keyboard tabs to it. */}
+        {[{ id: "campus" as const, at: HOME, label: "Campus: where all traffic starts" }, ...placed.map((f) => ({ id: f.id, at: f.at!, label: f.label }))].map(
+          (dot) => (
+            <Button
+              key={dot.id}
+              variant="bare"
+              className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              style={{ left: `${(dot.at[0] / W) * 100}%`, top: `${(dot.at[1] / H) * 100}%` }}
+              aria-label={`${dot.label}. Show details`}
+              aria-describedby={tip === dot.id ? "map-dot-details" : undefined}
+              onPointerEnter={(e) => e.pointerType === "mouse" && showTip(dot.id)}
+              onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
+              onFocus={() => showTip(dot.id)}
+              onBlur={hideTip}
+              onClick={() => showTip(dot.id)}
+              onKeyDown={(e) => e.key === "Escape" && hideTip()}
+            />
+          ),
+        )}
+        {tip === "campus" && (
+          <DotDetails at={HOME}>
+            <p className="text-sm font-medium text-accent">Campus</p>
+            <p className="mt-0.5 text-ink2">Where all traffic to these tools starts.</p>
+            <p className="mt-2 text-ink2">
+              <span className="font-mono text-ink">{formatBytes(total)}</span> out, <span className="font-mono text-ink">{formatBytes(totalIn)}</span> in
+              {lastMinute && (
+                <>
+                  , <span className="font-mono text-ink">{lastMinute.events}</span> {lastMinute.events === 1 ? "event" : "events"} in the last minute
+                </>
+              )}
+            </p>
+            <p className="mt-2 text-muted">Staff addresses aren&apos;t collected.</p>
+          </DotDetails>
+        )}
+        {placed
+          .filter((f) => f.id === tip)
+          .map((f) => (
+            <DotDetails key={f.id} at={f.at!}>
+              <p className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-medium text-ink">{f.label}</span>
+                <span className={SEVERITY_STYLE[f.worst].text}>
+                  {SEVERITY_LABEL[f.worst]} <span className="font-mono">{f.score}</span>
+                </span>
+              </p>
+              <p className="mt-0.5 text-ink2">
+                <span className="font-mono text-ink">{formatBytes(f.bytes)}</span> out,{" "}
+                {f.bytesIn > 0 ? (
+                  <>
+                    <span className="font-mono text-ink">{formatBytes(f.bytesIn)}</span> in
+                  </>
+                ) : (
+                  "in not reported"
+                )}
+              </p>
+              <p className="mt-2 text-muted">{f.apps.length === 1 ? "Tool" : "Tools"}</p>
+              <p className="text-ink2">{f.apps.map((a) => a.name).join(", ")}</p>
+              <p className="mt-2 text-muted">Destination IPs, the vendor&apos;s own</p>
+              {f.ips.length === 0 ? (
+                <p className="text-ink2">Not reported</p>
+              ) : (
+                <ul className="mt-0.5 space-y-px font-mono">
+                  {f.ips.slice(0, TIP_IPS).map((d) => (
+                    <li key={d.ip} className="grid grid-cols-[1fr_auto_auto] gap-x-2">
+                      <span className="text-ink">{d.ip}</span>
+                      <span className="text-right text-ink2">{formatBytes(d.bytes_out)} out</span>
+                      <span className="text-right text-muted">{formatBytes(d.bytes_in)} in</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {f.ips.length > TIP_IPS && <p className="mt-0.5 font-mono text-muted">+{f.ips.length - TIP_IPS} more, listed below the map</p>}
+            </DotDetails>
+          ))}
       </div>
 
       <div className="mt-3 sm:hidden">{stats}</div>
@@ -354,6 +454,7 @@ export function TrafficMap({
         <li className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-ink2" /> A moving dot is an event arriving now
         </li>
+        <li>Point at or tap a dot for its tools and addresses</li>
       </ul>
 
       <ul className="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2" onPointerLeave={() => setActive(null)}>

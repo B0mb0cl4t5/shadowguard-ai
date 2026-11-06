@@ -165,6 +165,14 @@ test("one broken panel can't blank the dashboard, and a broken screen offers a w
   assert.match(screen.text, /onClick=\{reset\}/);
 });
 
+test("map dots show their details on hover, tap and keyboard focus, including the vendors' addresses", () => {
+  const map = files.find((f) => f.name === "components/traffic-map.tsx");
+  for (const handler of ["onPointerEnter", "onFocus", "onBlur", "onClick"]) assert.match(map.text, new RegExp(`${handler}=`));
+  assert.match(map.text, /role="tooltip"/);
+  assert.match(map.text, /\.ips\.slice\(0, TIP_IPS\)/);
+  assert.doesNotMatch(map.text, /<title>/, "a native title tooltip shows on hover only, after a delay");
+});
+
 test("a block is never reported until the server has answered", () => {
   const dialog = files.find((f) => f.name === "components/review-dialog.tsx");
   const saved = dialog.text.indexOf("await decideRemediation");
