@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { formatBytes, secondsAgo } from "@/lib/format";
+import { formatBytes, relativeTime, secondsAgo } from "@/lib/format";
 import type { LiveEvent, LiveFeed, ShadowApp } from "@/lib/types";
 
 import { AnimatedNumber } from "./animated-number";
@@ -113,7 +113,11 @@ export function LiveTraffic({
                 // columns line up from row to row and the right-aligned figures form one edge.
                 className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem_6rem_7rem_6rem] dense:w-full dense:grid-cols-[3.5rem_minmax(0,1fr)_5.5rem_5rem_6.5rem_6rem] dense:gap-x-3 dense:py-1.5 ${fresh ? "animate-arrive" : ""}`}
               >
-                <time className="order-last font-mono text-xs text-muted lg:order-none" dateTime={e.observed_at}>
+                <time
+                  className="order-last whitespace-nowrap font-mono text-xs text-muted lg:order-none"
+                  dateTime={e.observed_at}
+                  title={now ? relativeTime(e.observed_at, now) : undefined}
+                >
                   {now ? secondsAgo(e.observed_at, now) : ""}
                 </time>
                 <span className="min-w-0 truncate">

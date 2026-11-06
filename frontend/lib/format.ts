@@ -75,9 +75,13 @@ export function formatBytes(bytes: number): string {
 }
 
 /** Seconds count up for the first minute, so a live feed visibly moves. */
+/** A short age for a traffic row ("4s ago", "51m ago", "2h ago", "3d ago"), so it fits one narrow column. */
 export function secondsAgo(iso: string, now: number): string {
   const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  return seconds < 60 ? `${seconds}s ago` : relativeTime(iso, now);
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86_400)}d ago`;
 }
 
 export function shortDate(isoDay: string): string {
