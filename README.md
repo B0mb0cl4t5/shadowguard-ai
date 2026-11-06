@@ -239,6 +239,10 @@ Being explicit, because judges will ask:
 
 ## Screens
 
+Light mode (toggled from the header or **⌘K / Ctrl K**):
+
+![Light mode Overview](docs/screenshots/light.jpg)
+
 | Sign-in | iPad | Mobile |
 |---|---|---|
 | ![Sign-in](docs/screenshots/login.jpg) | ![iPad](docs/screenshots/ipad.jpg) | ![Mobile](docs/screenshots/mobile.jpg) |

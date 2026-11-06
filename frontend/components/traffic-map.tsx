@@ -36,16 +36,16 @@ const REGIONS: Record<
     label: string;
     shortLabel: string;
     at: Point;
-    labelPosition: "top" | "bottom" | "right";
+    labelPosition: "top" | "bottom" | "right" | "bottom-left";
     unstated?: boolean;
   }
 > = {
   US: { label: "United States", shortLabel: "US", at: project(-98, 39), labelPosition: "top" },
   EU: { label: "Europe", shortLabel: "EU", at: project(12, 50), labelPosition: "top" },
-  SG: { label: "Singapore", shortLabel: "SG", at: project(103.8, 1.3), labelPosition: "bottom" },
-  MY: { label: "Malaysia", shortLabel: "MY", at: project(114.5, 3.5), labelPosition: "right" },
-  OTHER: { label: "Elsewhere, outside these regions", shortLabel: "Elsewhere", at: project(135, -24), labelPosition: "bottom" },
-  unknown: { label: "Policy doesn't say", shortLabel: "Unstated", at: project(-38, 24), labelPosition: "top", unstated: true },
+  SG: { label: "Singapore", shortLabel: "SG", at: project(105, -5), labelPosition: "bottom-left" },
+  MY: { label: "Malaysia", shortLabel: "MY", at: project(114.5, 4.2), labelPosition: "top" },
+  OTHER: { label: "Elsewhere, outside these regions", shortLabel: "Elsewhere", at: project(135, -24), labelPosition: "bottom-left" },
+  unknown: { label: "Policy doesn't say", shortLabel: "Unstated", at: project(-38, 22), labelPosition: "bottom" },
 };
 
 type Flow = {
@@ -53,7 +53,7 @@ type Flow = {
   label: string;
   shortLabel: string;
   at: Point;
-  labelPosition: "top" | "bottom" | "right";
+  labelPosition: "top" | "bottom" | "right" | "bottom-left";
   unstated?: boolean;
   apps: ShadowApp[];
   bytes: number;
@@ -294,7 +294,9 @@ export function TrafficMap({
           </li>
         </ul>
       </div>
-      <div className="relative rounded-lg border border-rule bg-ground p-2 dense:mx-auto dense:aspect-[1000/392] dense:h-full dense:max-w-full dense:flex-none">
+      <div className="relative rounded-lg border border-rule bg-ground p-2 dense:flex dense:min-h-0 dense:min-w-0 dense:flex-1 dense:items-center">
+        {/* Tight aspect-matched box around the SVG so percentage-positioned badges and hit targets align with SVG coordinates. */}
+        <div className="relative mx-auto w-full">
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block w-full overflow-visible"
@@ -433,12 +435,14 @@ export function TrafficMap({
           const posClass =
             f.labelPosition === "bottom"
               ? "-translate-x-1/2 pt-1.5"
-              : f.labelPosition === "right"
-                ? "-translate-y-1/2 pl-2"
-                : "-translate-x-1/2 -translate-y-full pb-1.5";
+              : f.labelPosition === "bottom-left"
+                ? "-translate-x-3/4 pt-1.5"
+                : f.labelPosition === "right"
+                  ? "-translate-y-1/2 pl-2"
+                  : "-translate-x-1/2 -translate-y-full pb-1.5";
           const leftPct = f.labelPosition === "right" ? ((f.at[0] + r) / W) * 100 : (f.at[0] / W) * 100;
           const topPct =
-            f.labelPosition === "bottom"
+            f.labelPosition === "bottom" || f.labelPosition === "bottom-left"
               ? ((f.at[1] + r) / H) * 100
               : f.labelPosition === "top"
                 ? ((f.at[1] - r) / H) * 100
@@ -548,6 +552,7 @@ export function TrafficMap({
               {f.ips.length > TIP_IPS && <p className="mt-0.5 font-mono text-muted">+{f.ips.length - TIP_IPS} more, listed below the map</p>}
             </DotDetails>
           ))}
+        </div>
       </div>
 
       <div className="mt-3 sm:hidden">{stats}</div>
