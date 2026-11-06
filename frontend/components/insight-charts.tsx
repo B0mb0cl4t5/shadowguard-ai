@@ -83,14 +83,14 @@ export function SeverityRing({ counts }: { counts: Record<Severity, number> }) {
 
   if (total === 0) {
     return (
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
-        <div className="relative h-40 w-40 shrink-0">
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 dense:min-h-0 dense:flex-1 dense:flex-nowrap dense:justify-start dense:gap-x-4">
+        <div className="relative h-40 w-40 shrink-0 dense:aspect-square dense:h-full dense:max-h-40 dense:w-auto">
           <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90" aria-hidden>
             <circle cx="64" cy="64" r={r} fill="none" style={{ stroke: "var(--raised)" }} strokeWidth="13" />
           </svg>
           <div className="absolute inset-0 grid place-content-center text-center">
-            <span className="font-mono text-title font-semibold leading-none text-ink">0</span>
-            <span className="mt-1 text-xs text-muted">exposures</span>
+            <span className="font-mono text-title font-semibold leading-none text-ink dense:text-lg">0</span>
+            <span className="mt-1 text-xs text-muted dense:sr-only">exposures</span>
           </div>
         </div>
         <p className="text-sm text-muted">No tools have been scored yet.</p>
@@ -99,8 +99,8 @@ export function SeverityRing({ counts }: { counts: Record<Severity, number> }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4">
-      <div className="relative h-40 w-40 shrink-0">
+    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 dense:min-h-0 dense:flex-1 dense:flex-nowrap dense:justify-start dense:gap-x-4">
+      <div className="relative h-40 w-40 shrink-0 dense:aspect-square dense:h-full dense:max-h-40 dense:w-auto">
         <svg viewBox="0 0 128 128" className="h-full w-full -rotate-90" aria-hidden>
           <circle cx="64" cy="64" r={r} fill="none" style={{ stroke: "var(--raised)" }} strokeWidth="13" />
           {SEVERITY_ORDER.map((s) => {
@@ -125,12 +125,12 @@ export function SeverityRing({ counts }: { counts: Record<Severity, number> }) {
           })}
         </svg>
         <div className="absolute inset-0 grid place-content-center text-center">
-          <span className="font-mono text-title font-semibold leading-none text-ink">{active ? counts[active] : total}</span>
-          <span className="mt-1 text-xs text-muted">{active ? SEVERITY_LABEL[active] : "exposures"}</span>
+          <span className="font-mono text-title font-semibold leading-none text-ink dense:text-lg">{active ? counts[active] : total}</span>
+          <span className="mt-1 text-xs text-muted dense:sr-only">{active ? SEVERITY_LABEL[active] : "exposures"}</span>
         </div>
       </div>
       {/* One Tab stop for the whole legend; the arrow keys move between severities and light up that slice. */}
-      <ul className="min-w-36 flex-1 space-y-1" aria-label="Exposures by severity">
+      <ul className="min-w-36 flex-1 space-y-1 dense:space-y-0" aria-label="Exposures by severity">
         {SEVERITY_ORDER.map((s, i) => {
           const move = (step: number) => items.current[(i + step + SEVERITY_ORDER.length) % SEVERITY_ORDER.length]?.focus();
           return (
@@ -156,7 +156,7 @@ export function SeverityRing({ counts }: { counts: Record<Severity, number> }) {
                   move(-1);
                 }
               }}
-              className="flex items-center gap-2 rounded px-1.5 py-1 text-sm transition-colors hover:bg-raised focus-visible:bg-raised"
+              className="flex items-center gap-2 rounded px-1.5 py-1 text-sm transition-colors hover:bg-raised focus-visible:bg-raised dense:py-0 dense:leading-[18px]"
             >
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${SEVERITY_STYLE[s].mark}`} />
               <span className="flex-1 text-ink2">{SEVERITY_LABEL[s]}</span>
@@ -179,19 +179,25 @@ export function DepartmentBars({ departments }: { departments: DepartmentExposur
   }
 
   return (
-    <ul className="space-y-2.5">
+    // On one screen (dense) only whole rows show; the rest wrap into a hidden second column.
+    <ul className="space-y-2.5 dense:relative dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:flex-wrap dense:gap-y-1 dense:space-y-0 dense:overflow-hidden">
       {rows.map((d, i) => {
         const severity = severityFor(d.max_score);
         return (
-          <li key={d.name} title={`${d.name}: ${d.max_score}, ${SEVERITY_LABEL[severity]}, ${d.shadow_tools} shadow tools`}>
-            <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-              <span className="min-w-0 truncate text-ink2">{d.name}</span>
-              <span className="shrink-0 font-mono text-ink">
+          // On one screen (dense) each department is one line: name, bar, score.
+          <li
+            key={d.name}
+            className="dense:flex dense:w-full dense:items-center dense:gap-3 dense:text-sm dense:leading-[18px]"
+            title={`${d.name}: ${d.max_score}, ${SEVERITY_LABEL[severity]}, ${d.shadow_tools} shadow tools`}
+          >
+            <div className="mb-1 flex items-baseline justify-between gap-2 text-sm dense:contents">
+              <span className="min-w-0 truncate text-ink2 dense:w-2/5 dense:shrink-0">{d.name}</span>
+              <span className="shrink-0 font-mono text-ink dense:order-last dense:w-7 dense:text-right">
                 {d.max_score}
                 <span className="sr-only"> {SEVERITY_LABEL[severity]}</span>
               </span>
             </div>
-            <div className="h-1.5 rounded-full bg-raised overflow-hidden" aria-hidden>
+            <div className="h-1.5 rounded-full bg-raised overflow-hidden dense:flex-1" aria-hidden>
               <div
                 className={`h-full origin-left animate-grow-x rounded-full ${SEVERITY_STYLE[severity].mark} transition-[width] duration-500 ease-out`}
                 style={{ width: `${d.max_score}%`, animationDelay: `${i * 50}ms` }}
@@ -232,15 +238,16 @@ export function DetectionColumns({ points }: { points: TrendPoint[] }) {
   };
 
   return (
-    <div>
-      <p className="mb-3 flex min-h-5 flex-wrap items-baseline gap-x-2 text-xs text-muted">
+    // On one screen (dense) the columns take whatever height the panel has; elsewhere a fixed h-48.
+    <div className="dense:flex dense:min-h-0 dense:flex-1 dense:flex-col">
+      <p className="mb-3 flex min-h-5 flex-wrap items-baseline gap-x-2 text-xs text-muted dense:mb-1 dense:flex-nowrap dense:truncate">
         <span className="font-mono text-sm font-medium text-ink">{active.detections}</span>
         <span>
           detections, <span className="font-mono text-negative">{active.critical}</span> critical, on{" "}
           <span className="font-mono">{shortDate(active.day)}</span>
         </span>
       </p>
-      <div className="relative flex h-48">
+      <div className="relative flex h-48 dense:h-auto dense:min-h-0 dense:flex-1">
         <div className="pointer-events-none absolute inset-y-0 left-0 flex flex-col justify-between font-mono text-xs leading-none text-muted">
           <span>{max}</span>
           <span>{max / 2}</span>
@@ -281,7 +288,7 @@ export function DetectionColumns({ points }: { points: TrendPoint[] }) {
           })}
         </div>
       </div>
-      <div className="ml-7 mt-2 flex justify-between font-mono text-xs text-muted">
+      <div className="ml-7 mt-2 flex justify-between font-mono text-xs text-muted dense:mt-1">
         <span>{shortDate(points[0]!.day)}</span>
         <span>{shortDate(points[points.length - 1]!.day)}</span>
       </div>

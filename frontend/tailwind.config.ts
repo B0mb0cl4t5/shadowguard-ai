@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   darkMode: "class",
@@ -162,7 +163,16 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `dense:` styles the one-screen Overview: on `.one-screen` and inside it, and only on a window
+    // wide and tall enough to hold every block. Anything smaller keeps the scrolling layout.
+    plugin(({ addVariant }) =>
+      addVariant("dense", [
+        "@media (min-width: 1280px) and (min-height: 740px) { &.one-screen }",
+        "@media (min-width: 1280px) and (min-height: 740px) { .one-screen & }",
+      ]),
+    ),
+  ],
 };
 
 export default config;

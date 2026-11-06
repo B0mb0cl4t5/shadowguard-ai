@@ -8,7 +8,9 @@ Built for **Problem Statement 02 — Intelligent Automation & Digital Transforma
 
 **Live:** [shadowguard-ai-bice.vercel.app](https://shadowguard-ai-bice.vercel.app)
 
-![The Overview tab: where data goes, live traffic, block proposals and the trends, all following the live feed](docs/screenshots/desktop.jpg)
+![The Overview tab on one screen: where data goes, live traffic, block proposals, the trends and the most exposed departments and tools, all following the live feed](docs/screenshots/desktop.jpg)
+
+On a laptop or desktop window (at least 1280 × 740) the whole Overview fits one screen at 100% zoom. Smaller windows, tablets and phones get the same blocks as a scrolling page.
 
 > The demo data is synthetic and every vendor in it (Summarix, GradeSync, PaperPilot…) is **fictional**. Real AI tools (ChatGPT, Gemini and others) appear only when a collector reports real traffic from a real laptop, and each starts unread until an admin fetches its published policy. The screenshots show the demo data with simulated traffic.
 

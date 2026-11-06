@@ -30,15 +30,18 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section id={id} className={`flex min-w-0 scroll-mt-4 flex-col rounded-lg bg-surface ${className}`}>
-      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-5 pt-5">
+    // On the one-screen Overview (`dense:`) a panel takes its share of the window: tighter padding, and
+    // the note gives way to the content (it's still read out by screen readers).
+    <section id={id} className={`flex min-w-0 scroll-mt-4 flex-col rounded-lg bg-surface dense:min-h-0 ${className}`}>
+      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-5 pt-5 dense:flex-nowrap dense:items-center dense:px-4 dense:pt-3">
         <div className="min-w-0">
-          <h2 className="text-md font-semibold text-ink">{title}</h2>
-          {note && <p className="mt-0.5 text-sm text-muted">{note}</p>}
+          <h2 className="text-md font-semibold text-ink dense:truncate dense:text-base">{title}</h2>
+          {note && <p className="mt-0.5 text-sm text-muted dense:sr-only">{note}</p>}
         </div>
-        {action}
+        {/* On one screen a small action button doesn't make the header taller than its title. */}
+        {action && <div className="dense:-my-1 dense:shrink-0">{action}</div>}
       </header>
-      <div className={`min-w-0 flex-1 p-5 ${bodyClassName}`}>
+      <div className={`min-w-0 flex-1 p-5 ${bodyClassName} dense:flex dense:min-h-0 dense:flex-col dense:px-4 dense:pb-2 dense:pt-1`}>
         <PanelBoundary label={title}>{children}</PanelBoundary>
       </div>
     </section>

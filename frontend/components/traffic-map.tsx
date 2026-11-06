@@ -235,9 +235,12 @@ export function TrafficMap({
     </dl>
   );
 
+  // On one screen (dense) the totals stand in a column beside the map, the map takes the panel's height,
+  // and the legend and region list give way: each dot's details card carries the same figures.
   return (
-    <div>
-      <div className="relative">
+    <div className="dense:flex dense:h-full dense:min-h-0 dense:gap-5">
+      <div className="hidden dense:flex dense:shrink-0 dense:flex-col dense:justify-end">{stats}</div>
+      <div className="relative dense:mx-auto dense:aspect-[1000/392] dense:h-full dense:max-w-full dense:flex-none">
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block w-full overflow-visible"
@@ -365,7 +368,7 @@ export function TrafficMap({
             </span>
           );
         })}
-        <div className="absolute bottom-0 left-0 hidden sm:block">{stats}</div>
+        <div className="absolute bottom-0 left-0 hidden sm:block dense:hidden">{stats}</div>
 
         {/* Each dot opens a details card: a mouse points at it, a finger taps it, the keyboard tabs to it. */}
         {[{ id: "campus" as const, at: HOME, label: "Campus: where all traffic starts" }, ...placed.map((f) => ({ id: f.id, at: f.at!, label: f.label }))].map(
@@ -444,7 +447,7 @@ export function TrafficMap({
 
       <div className="mt-3 sm:hidden">{stats}</div>
 
-      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink2">
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink2 dense:hidden">
         <li className="flex items-center gap-1.5">
           <span className="h-0.5 w-4 rounded-full bg-sev-critical" /> Out, coloured by the region's worst severity
         </li>
@@ -457,7 +460,7 @@ export function TrafficMap({
         <li>Point at or tap a dot for its tools and addresses</li>
       </ul>
 
-      <ul className="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2" onPointerLeave={() => setActive(null)}>
+      <ul className="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2 dense:hidden" onPointerLeave={() => setActive(null)}>
         {flows.map((f) => (
           <li key={f.id} onPointerEnter={() => setActive(f.id)}>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">

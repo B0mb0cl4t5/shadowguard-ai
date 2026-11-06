@@ -38,16 +38,17 @@ export function DecisionQueue({
           <EmptyState>No proposals waiting. A new one appears when a tool reaches Critical.</EmptyState>
         </div>
       ) : (
-        <ul>
+        // On one screen (dense) only whole rows show; the rest wrap into a hidden second column.
+        <ul className="dense:relative dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:flex-wrap dense:overflow-hidden">
           {worstFirst.map(({ item, context }) => (
-            <li key={item.id} className="border-b border-rule py-3 last:border-b-0">
+            <li key={item.id} className="border-b border-rule py-3 last:border-b-0 dense:w-full dense:py-1">
               <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium text-ink">
                     {item.app}
                     {context.exposure && <SeverityBadge severity={context.exposure.severity} score={context.exposure.score} />}
                   </p>
-                  <p className="mt-0.5 text-sm text-muted">
+                  <p className="mt-0.5 text-sm text-muted dense:truncate">
                     {item.department}, <span className="whitespace-nowrap font-mono">{relativeTime(item.created_at, now)}</span>
                   </p>
                 </div>

@@ -9,11 +9,12 @@ import { Card } from "./ui/card";
 
 function Metric({ label, value, sub, visual }: { label: string; value: ReactNode; sub: ReactNode; visual: ReactNode }) {
   return (
-    <div className="flex min-w-0 items-center justify-between gap-4 border-rule px-5 py-3.5 [&:not(:first-child)]:border-t lg:[&:not(:first-child)]:border-l lg:[&:not(:first-child)]:border-t-0">
-      <div className="min-w-0">
+    <div className="flex min-w-0 items-center justify-between gap-4 border-rule px-5 py-3.5 dense:py-2 [&:not(:first-child)]:border-t lg:[&:not(:first-child)]:border-l lg:[&:not(:first-child)]:border-t-0">
+      {/* On one screen (dense) the label and figure share a line, so the strip is one line shorter. */}
+      <div className="min-w-0 dense:flex dense:flex-wrap dense:items-baseline dense:gap-x-2">
         <p className="text-sm text-ink2">{label}</p>
-        <p className="mt-0.5 font-mono text-lg font-medium tracking-tight text-ink">{value}</p>
-        <p className="mt-0.5 text-sm text-muted">{sub}</p>
+        <p className="mt-0.5 font-mono text-lg font-medium tracking-tight text-ink dense:mt-0 dense:leading-none">{value}</p>
+        <p className="mt-0.5 text-sm text-muted dense:mt-1 dense:w-full dense:truncate">{sub}</p>
       </div>
       <div className="w-20 shrink-0">{visual}</div>
     </div>

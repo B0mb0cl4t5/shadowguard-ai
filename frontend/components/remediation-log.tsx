@@ -67,7 +67,8 @@ export function RemediationLog({
           <EmptyState>No responses yet. They appear here when a tool reaches High or Critical.</EmptyState>
         </div>
       ) : (
-        <ol>
+        // On one screen (dense) only whole entries show; the rest wrap into a hidden second column.
+        <ol className="dense:relative dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:flex-wrap dense:overflow-hidden">
           {visible.map((item) => (
             <LogItem key={item.id} item={item} role={role} now={now} onReview={onReview} clamp={Boolean(limit)} />
           ))}
@@ -98,14 +99,15 @@ function LogItem({
   const detail = item.action_type === "risk_ticket" ? item.detail.split(" | ").join(". ") : item.detail;
 
   return (
-    <li aria-label={`${meta.label} for ${item.app}`} className="flex gap-3 border-b border-rule py-3 last:border-b-0">
+    <li aria-label={`${meta.label} for ${item.app}`} className="flex gap-3 border-b border-rule py-3 last:border-b-0 dense:w-full dense:py-2">
       <Icon size={16} className={`mt-0.5 shrink-0 ${meta.ink}`} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-          <p className="font-medium text-ink">
+      {/* On one screen (dense) the status sits beside the detail rather than under it, so an entry is two lines. */}
+      <div className="min-w-0 flex-1 dense:grid dense:grid-cols-[minmax(0,1fr)_auto] dense:items-center dense:gap-x-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-2 dense:col-span-2 dense:flex-nowrap">
+          <p className="font-medium text-ink dense:min-w-0 dense:truncate">
             {meta.label} <span className="font-normal text-muted">for {item.app}, {item.department}</span>
           </p>
-          <time className="font-mono text-xs text-muted" dateTime={item.created_at}>
+          <time className="font-mono text-xs text-muted dense:shrink-0" dateTime={item.created_at}>
             {relativeTime(item.created_at, now)}
           </time>
         </div>
@@ -113,18 +115,18 @@ function LogItem({
           <Button
             variant="bare"
             onClick={() => setExpanded((v) => !v)}
-            className={`mt-1 block text-left text-sm text-ink2 ${expanded ? "" : "line-clamp-1"}`}
+            className="mt-1 block text-left text-sm text-ink2 dense:min-w-0"
             aria-expanded={expanded}
           >
-            {detail}
+            <span className={expanded ? undefined : "line-clamp-1"}>{detail}</span>
           </Button>
         ) : (
           <p className="mt-1 max-w-3xl text-sm text-ink2">{detail}</p>
         )}
         {(item.status !== "simulated" || item.decided_by) && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2 dense:mt-1 dense:flex-nowrap">
             <Badge tone={status.tone}>{status.label}</Badge>
-            {item.decided_by && <span className="font-mono text-xs text-muted">{item.decided_by}</span>}
+            {item.decided_by && <span className="font-mono text-xs text-muted dense:hidden">{item.decided_by}</span>}
             {pending && role === "admin" && (
               <Button
                 variant="secondary"

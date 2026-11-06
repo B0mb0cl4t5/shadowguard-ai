@@ -100,7 +100,9 @@ export function LiveTraffic({
           </EmptyState>
         </div>
       ) : (
-        <ol>
+        // On one screen (dense) the list shows the rows that fit whole: the rest wrap into a second
+        // column, which overflow hides, so a row is never cut in half.
+        <ol className="dense:relative dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:flex-wrap dense:overflow-hidden">
           {events.slice(0, ROWS).map((e) => {
             const app = apps.find((a) => a.id === e.app_id);
             const fresh = firstSeen.current !== null && e.id > firstSeen.current;
@@ -109,7 +111,7 @@ export function LiveTraffic({
                 key={e.id}
                 // Every column on a wide screen has a fixed width or a share of the row, never "auto", so the
                 // columns line up from row to row and the right-aligned figures form one edge.
-                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem_6rem_7rem_6rem] ${fresh ? "animate-arrive" : ""}`}
+                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem_6rem_7rem_6rem] dense:w-full dense:grid-cols-[3.5rem_minmax(0,1fr)_5.5rem_5rem_6.5rem_6rem] dense:gap-x-3 dense:py-1.5 ${fresh ? "animate-arrive" : ""}`}
               >
                 <time className="order-last font-mono text-xs text-muted lg:order-none" dateTime={e.observed_at}>
                   {now ? secondsAgo(e.observed_at, now) : ""}
@@ -124,7 +126,7 @@ export function LiveTraffic({
                   )}{" "}
                   <span className="text-muted">{e.department}</span>
                 </span>
-                <span className="hidden min-w-0 truncate text-ink2 lg:block">{REGION_LABEL[e.data_location]}</span>
+                <span className="hidden min-w-0 truncate text-ink2 lg:block dense:hidden">{REGION_LABEL[e.data_location]}</span>
                 {/* On a phone both figures share a line; on a wide screen each gets its own right-aligned column. */}
                 <span className="col-start-1 text-xs text-muted lg:hidden">
                   <span className="font-mono text-ink">{formatBytes(e.bytes_out)}</span> out, <span className="font-mono text-ink">{formatBytes(e.bytes_in)}</span> in

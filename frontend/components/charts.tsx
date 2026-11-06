@@ -59,9 +59,10 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
   };
 
   return (
-    <div>
+    // On one screen (dense) the plot takes whatever height its panel has; elsewhere it is a fixed h-48.
+    <div className="dense:flex dense:min-h-0 dense:flex-1 dense:flex-col">
       {/* The readout follows the pointer or arrow keys. The headline figure is in the strip above. */}
-      <p className="mb-3 flex min-h-5 flex-wrap items-baseline gap-x-2 text-xs text-muted">
+      <p className="mb-3 flex min-h-5 flex-wrap items-baseline gap-x-2 text-xs text-muted dense:mb-1 dense:flex-nowrap dense:truncate">
         <span className="font-mono text-sm font-medium text-ink">{active?.exposure_index.toFixed(1)}</span>
         <span className={SEVERITY_STYLE[sev].text}>{SEVERITY_LABEL[sev]}</span>
         <span>
@@ -69,7 +70,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
           <span className="font-mono">{active?.detections ?? 0}</span> detections
         </span>
       </p>
-      <div className="relative flex h-48">
+      <div className="relative flex h-48 dense:h-auto dense:min-h-0 dense:flex-1">
         <div className="pointer-events-none absolute inset-y-0 left-0 flex flex-col justify-between font-mono text-xs leading-none text-muted">
           {[...geo.ticks].reverse().map((t) => (
             <span key={t}>{Math.round(t)}</span>
@@ -137,7 +138,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
           )}
         </div>
       </div>
-      <div className="ml-7 mt-2 flex justify-between font-mono text-xs text-muted">
+      <div className="ml-7 mt-2 flex justify-between font-mono text-xs text-muted dense:mt-1">
         <span>{shortDate(points[0]!.day)}</span>
         <span>{shortDate(points[Math.floor(points.length / 2)]!.day)}</span>
         <span>{shortDate(last.day)}</span>

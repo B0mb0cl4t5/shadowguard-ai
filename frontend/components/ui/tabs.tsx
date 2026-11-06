@@ -71,7 +71,7 @@ export function Tabs<T extends string>({
 
 export function TabPanel<T extends string>({ id, children }: { id: T; children: ReactNode }) {
   return (
-    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1} className="pt-6">
+    <div role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1} className="pt-6 dense:min-h-0 dense:flex-1 dense:pt-3">
       {children}
     </div>
   );

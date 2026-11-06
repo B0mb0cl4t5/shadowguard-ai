@@ -274,3 +274,25 @@ test("the trend chart has a fixed height", () => {
   const charts = files.find((f) => f.name === "components/charts.tsx");
   assert.match(charts.text, /relative flex h-(?:32|40|48|64|72|80)/);
 });
+
+test("only the Overview fits one screen, and only on a window big enough to hold it", () => {
+  // `dense:` applies inside `.one-screen` on a wide and tall window; anything smaller keeps the scrolling layout.
+  const config = readFileSync(join(frontend, "tailwind.config.ts"), "utf8");
+  const variant = config.slice(config.indexOf('addVariant("dense"'));
+  assert.match(variant, /min-width:\s*1280px/);
+  assert.match(variant, /min-height:\s*740px/);
+  assert.match(variant, /\.one-screen &/);
+  const shell = files.find((f) => f.name === "components/dashboard-shell.tsx");
+  assert.match(shell.text, /tab === "overview" \? "one-screen/);
+  // The class is set in one place, so the other tabs keep their scrolling layout.
+  assert.equal(offenders(/["'`]one-screen[\s"'`]/).join(), "components/dashboard-shell.tsx");
+  assert.equal((shell.text.match(/["'`]one-screen[\s"'`]/g) ?? []).length, 1);
+});
+
+test("one-screen lists show whole rows and never scroll the page sideways", () => {
+  // A list that wraps its extra rows into a hidden column must also be the containing block, or an
+  // absolutely positioned child (sr-only text) escapes the clip and widens the page.
+  const lists = files.flatMap((f) => (f.text.match(/className="[^"]*dense:flex-wrap[^"]*dense:overflow-hidden[^"]*"/g) ?? []).map((c) => ({ name: f.name, c })));
+  assert.ok(lists.length >= 5, "the one-screen lists clip whole rows");
+  assert.deepEqual(lists.filter(({ c }) => !c.includes("dense:relative")).map(({ name }) => name), []);
+});

@@ -363,8 +363,10 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
   return (
     <>
+      {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles); the other tabs scroll. */}
+      <div className={tab === "overview" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
       <header className="border-b border-line">
-        <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8">
+        <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8 dense:min-h-12 dense:py-1.5">
           <div className="flex min-w-0 items-center gap-2.5">
             <ShieldMark size={22} className="shrink-0 text-accent" />
             <span className="text-base font-semibold text-ink">ShadowGuard</span>
@@ -451,15 +453,15 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[1500px] px-4 pb-12 pt-6 sm:px-8">
-        <div className="mb-4">
-          <h1 className="text-title font-semibold tracking-tight text-ink">Shadow AI exposure</h1>
-          <p className="mt-1 text-base text-ink2">{finding(data, pending.length)}</p>
+      <div className="mx-auto w-full max-w-[1500px] px-4 pb-12 pt-6 sm:px-8 dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:pb-3 dense:pt-3">
+        <div className="mb-4 dense:mb-2 dense:flex dense:items-baseline dense:gap-4">
+          <h1 className="text-title font-semibold tracking-tight text-ink dense:shrink-0 dense:text-lg">Shadow AI exposure</h1>
+          <p className="mt-1 text-base text-ink2 dense:mt-0 dense:truncate">{finding(data, pending.length)}</p>
         </div>
 
         <KpiRow data={data} />
 
-        <div className="mt-6">
+        <div className="mt-6 dense:mt-2 dense:flex dense:min-h-0 dense:flex-1 dense:flex-col">
           <Tabs
             label="Dashboard views"
             selected={tab}
@@ -474,13 +476,17 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
           {tab === "overview" && (
             <TabPanel id="overview">
-              {/* 12 columns, one 24px gutter: 8 + 4 on xl, so every row lands on the canvas edges. */}
-              <div className="grid grid-cols-12 gap-6">
-                <div className="col-span-12 flex flex-col gap-6 xl:col-span-8">
+              {/* 12 columns, one 24px gutter: 8 + 4 on xl, so every row lands on the canvas edges. On one screen
+                  (dense) it fills the window instead: the map over live traffic down the left half; proposals,
+                  the trend and daily detections in the middle; recent activity, severity, departments and
+                  tools on the right. Twelve equal rows, so a middle panel spans four and a right one three. */}
+              <div className="grid grid-cols-12 gap-6 dense:h-full dense:grid-rows-[repeat(12,minmax(0,1fr))] dense:gap-4">
+                <div className="col-span-12 flex flex-col gap-6 xl:col-span-8 dense:col-span-6 dense:row-span-12 dense:row-start-1 dense:min-h-0 dense:gap-4">
                   <Panel
                     title="Where our data goes"
                     note="Traffic to and from unapproved tools, placed by the storage region each vendor's policy states, not by looking up the IP. Staff IP addresses aren't collected."
                     bodyClassName="pt-3"
+                    className="dense:flex-[3]"
                   >
                     <TrafficMap apps={data.apps} events={live.events} lastMinute={live.lastMinute} onOpen={setSelected} />
                   </Panel>
@@ -492,25 +498,33 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                     checkEveryMs={LIVE_MS}
                     apps={data.apps}
                     onOpen={setSelected}
-                    className="flex-1"
+                    className="flex-1 dense:flex-[2]"
                   />
                 </div>
                 {/* Proposals need action, so on a phone they come first. */}
-                <div className="order-first col-span-12 flex flex-col gap-6 xl:order-none xl:col-span-4">
-                  <DecisionQueue pending={pending} data={data} role={role} now={now} onReview={setReview} />
-                  <Panel title="Exposure by severity" note="Each tool in each department" className="flex-1">
+                <div className="order-first col-span-12 flex flex-col gap-6 xl:order-none xl:col-span-4 dense:contents">
+                  <DecisionQueue pending={pending} data={data} role={role} now={now} onReview={setReview} className="dense:col-span-3 dense:col-start-7 dense:row-span-4 dense:row-start-1" />
+                  <Panel title="Exposure by severity" note="Each tool in each department" className="flex-1 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-4">
                     <SeverityRing counts={data.severity_breakdown} />
                   </Panel>
                 </div>
-                <Panel title="Risk exposure index, last 14 days" className="col-span-12 md:col-span-6 xl:col-span-4" bodyClassName="pt-3">
+                <Panel
+                  title="Risk exposure index, last 14 days"
+                  className="col-span-12 md:col-span-6 xl:col-span-4 dense:col-span-3 dense:col-start-7 dense:row-span-4 dense:row-start-5"
+                  bodyClassName="pt-3"
+                >
                   <TrendChart points={data.trend} />
                 </Panel>
-                <Panel title="Most exposed departments" className="col-span-12 md:col-span-6 xl:col-span-4" bodyClassName="pt-3">
+                <Panel
+                  title="Most exposed departments"
+                  className="col-span-12 md:col-span-6 xl:col-span-4 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-7"
+                  bodyClassName="pt-3"
+                >
                   <DepartmentBars departments={data.departments} />
                 </Panel>
                 <Panel
                   title="Detections per day"
-                  className="col-span-12 xl:col-span-4"
+                  className="col-span-12 xl:col-span-4 dense:col-span-3 dense:col-start-7 dense:row-span-4 dense:row-start-9"
                   bodyClassName="pt-3"
                   action={
                     <ul className="flex gap-3 text-xs text-ink2">
@@ -534,9 +548,15 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                   role={role}
                   now={now}
                   onReview={setReview}
-                  className="col-span-12 xl:col-span-8"
+                  className="col-span-12 xl:col-span-8 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-1"
                 />
-                <TopTools apps={data.apps} now={now} onOpen={setSelected} onViewAll={() => openTab("tools")} className="col-span-12 xl:col-span-4" />
+                <TopTools
+                  apps={data.apps}
+                  now={now}
+                  onOpen={setSelected}
+                  onViewAll={() => openTab("tools")}
+                  className="col-span-12 xl:col-span-4 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-10"
+                />
               </div>
             </TabPanel>
           )}
@@ -582,11 +602,12 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           )}
         </div>
 
-        <footer className="mt-6 text-xs leading-relaxed text-muted">
+        <footer className="mt-6 text-xs leading-relaxed text-muted dense:mt-2 dense:shrink-0 dense:leading-4">
           Metadata-only telemetry: domain, department, time, traffic volume and the vendor&apos;s IP. No message content is inspected. The demo
           vendors (Summarix, GradeSync and the rest) and their traffic are fictional. Real AI tools, such as ChatGPT and Gemini, appear only
           when a collector reports real traffic, and their scores are automated readings of each vendor&apos;s published policy.
         </footer>
+      </div>
       </div>
 
       {selected && (
