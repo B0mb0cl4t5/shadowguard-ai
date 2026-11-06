@@ -75,14 +75,14 @@ shadowguard-ai/
 │   │   ├── models.py            Strict request validation
 │   │   ├── notify.py            Teams webhook nudges
 │   │   ├── config.py · db.py
-│   ├── scripts/                 build_seed · init_db · migrate_db · create_api_key · simulate_live · real_catalog
-│   └── tests/                   150 tests (unit + PostgreSQL integration)
+│   ├── scripts/                 build_seed · init_db · migrate_db · create_api_key · simulate_live · real_catalog · prune_telemetry
+│   └── tests/                   166 tests (147 unit/security + 19 PostgreSQL integration)
 ├── collector/
 │   └── shadowguard_collector.py Laptop proxy that reports visits to AI tools (standard library only)
 ├── frontend/                    Next.js 15 (App Router, TypeScript, Tailwind) → Vercel
 │   ├── app/                     Pages + server route handlers (the browser never sees an API key)
 │   ├── components/              Screens and in-house charts, plus ui/ for the shared card, table, badge, button and input
-│   ├── lib/                     session signing, PBKDF2, backend client, guards, the UI design-contract tests
+│   ├── lib/                     session signing, PBKDF2, backend client, guards, theme state, 73 unit & UI design-contract tests
 │   ├── middleware.ts            Auth gate + per-request nonce CSP
 │   └── public/                  PWA icons + service worker
 ├── database/
@@ -172,7 +172,7 @@ python collector/shadowguard_collector.py --api https://YOUR-SITE.vercel.app --d
 start msedge --proxy-server=127.0.0.1:8899 --user-data-dir=%TEMP%\shadowguard-demo
 ```
 
-The last line opens a separate Edge profile that uses the collector, so normal browsing is untouched. Open ChatGPT or Gemini in it, and within seconds the visit slides into *Live traffic* and the tool counts roll up. It joins the map once its policy has been read and states where the data is stored, because the map places traffic by that region, never by looking up the IP. `--dry-run` prints the events instead of sending them.
+The last line opens a separate Edge profile that uses the collector, so normal browsing is untouched. Open ChatGPT or Gemini in it, and within seconds the visit slides into *Live traffic*, the tool counts roll up, and a live pulse travels across the map (starting in the *Unstated* policy zone with a dashed alert ring until its policy is read, then moving to its stated storage region). `--dry-run` prints the events instead of sending them.
 
 Give the laptop its own ingest key (`npm run keys:ingest`) and add its digest to `SHADOWGUARD_API_KEYS` alongside the existing ones, so it can be revoked on its own. Keep the raw key in a file outside the repository rather than in the shell history.
 
@@ -188,15 +188,15 @@ The real tools it watches (ChatGPT, Gemini, Claude, Copilot, Perplexity, Grammar
 
 - **Live feed:** the dashboard follows a small live query every four seconds while the tab is visible, and reloads the rest of the data only when something changed. Times count up honestly, so old data looks old.
 - **Heartbeat:** the *Live* dot beats once per answer from the server, and a line under *Live traffic* fills toward the next check. If the connection drops, both stop and the badge turns amber.
-- **Traffic map:** an arc to each region where vendors say they store data, sized by volume. Each real event sends a dot along its arc, and a ring opens where it lands. A still map means a quiet network.
+- **Traffic map:** an arc to every region (`US`, `EU`, `SG`, `MY`, `Elsewhere`, and `Unstated` for policies that omit storage location), with outbound arc thickness and destination markers scaled by byte volume, dashed inbound arcs, region pills showing severity and outbound volume at a glance, and interactive tooltips where clicking any tool chip opens its policy drawer. Each real event sends a dot along its arc, and a ring opens where it lands. A still map means a quiet network.
 - **Charts draw in** as their data arrives: the trend wipes in, bars grow, ring segments sweep, the gauge turns to its value. Figures roll to new values, and new traffic rows slide in.
-- **One switch** in the header, or the system's reduced-motion setting, turns all motion off.
+- **Dark & light mode + reduced motion:** a two-tone architectural palette in both dark and light mode (with an amber alert header reserved for pending human block decisions), toggled from the header or **⌘K / Ctrl K** and persisted across sessions. One switch in the header, or the system's reduced-motion setting, turns all motion off.
 
 Also:
 
-- **⌘K / Ctrl K command menu** (also a *Search* button for touch devices): open any tool, review pending block proposals, filter by severity, sort, refresh, sign out. Fully keyboard-driven and screen-reader labelled. Reviewing a block opens the approval dialog; the menu never blocks directly.
+- **⌘K / Ctrl K command menu** (also a *Search* button for touch devices): open any tool, review pending block proposals, filter by severity, sort, switch between dark and light mode, refresh, sign out. Fully keyboard-driven and screen-reader labelled. Reviewing a block opens the approval dialog; the menu never blocks directly.
 - **Policy change diff:** every distinct policy text is stored as a version. When a vendor rewrites its policy, the tool gets a *Policy changed* tag and the panel shows posture before → after plus a word-level diff.
-- **Tool exposure:** a risk map (exposure against users, so the top right is what to deal with first), what each vendor's policy says about training on your data, and a sortable table: click *Tool*, *Worst exposure*, *Users* or *Last seen*, or use the *Sort by* menu on phones.
+- **Tool exposure & side-by-side comparison:** a risk map (exposure against users, so the top right is what to deal with first), what each vendor's policy says about training on your data, a sortable table, and a two-tool comparison dialog to inspect any two vendors' posture, policy clauses, and department reach side by side.
 - **Department heatmap:** every department against every tool, blank where there's no use, struck through where a risk was mitigated.
 - **Live policy test:** admins paste any policy and run the full pipeline as a dry run.
 - **No UI libraries:** the command menu, word diff, charts, map, animations and table sorting are written in-house, so the frontend has no UI dependencies beyond React and Next.js, and `npm audit` stays at zero. `frontend/lib/design-contract.test.mjs` checks the UI rules, including that no animation loops on its own.
