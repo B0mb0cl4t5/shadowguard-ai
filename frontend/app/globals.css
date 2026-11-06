@@ -5,29 +5,29 @@
 @layer base {
   :root {
     color-scheme: dark;
-    /* A deep blue ground and cards, so the screen has colour before any data is drawn. */
-    --ground: #0b1120;
-    --surface: #131c31;
-    --header: #1c2f52;
-    --header-line: #2e4a7d;
-    --header-warning: rgb(217 119 6 / 0.28);
-    --header-warning-line: rgb(245 158 11 / 0.45);
-    --header-danger: rgb(225 29 72 / 0.28);
-    --header-danger-line: rgb(244 63 94 / 0.45);
-    --header-data: rgb(109 40 217 / 0.28);
-    --header-data-line: rgb(137 129 203 / 0.45);
-    --header-positive: rgb(5 150 105 / 0.26);
-    --header-positive-line: rgb(16 185 129 / 0.45);
-    --raised: #1e2a45;
-    --raised-hover: #2b3a5c;
-    --row-hover: rgb(30 42 69 / 0.6);
-    --scrim: rgb(5 8 18 / 0.75);
+    /* Deep obsidian-slate canvas, rich navy cards, and a unified two-tone architectural header band. */
+    --ground: #080d1a;
+    --surface: #0f172a;
+    --header: #17233b;
+    --header-line: #263859;
+    --header-warning: rgb(245 158 11 / 0.16);
+    --header-warning-line: rgb(245 158 11 / 0.4);
+    --header-danger: #17233b;
+    --header-danger-line: #263859;
+    --header-data: #17233b;
+    --header-data-line: #263859;
+    --header-positive: #17233b;
+    --header-positive-line: #263859;
+    --raised: #1e293b;
+    --raised-hover: #29374f;
+    --row-hover: rgb(30 41 59 / 0.65);
+    --scrim: rgb(4 7 15 / 0.78);
     --danger-fill: #e11d48;
     --danger-fill-hover: #f43f5e;
-    --border: #22304f;
-    --rule: #22304f;
-    --control: #3a4a70;
-    --text: #f1f5f9;
+    --border: #1e2d47;
+    --rule: #1e293b;
+    --control: #3b4f73;
+    --text: #f8fafc;
     --text-2: #cbd5e1;
     --muted: #94a3b8;
     /* The teal of the ShadowGuard mark: the mark and the focus ring. */
@@ -68,31 +68,31 @@
 
   html.light {
     color-scheme: light;
-    /* Two-tone light mode: deeper cool slate canvas, crisp white cards, and rich tinted panel headers. */
-    --ground: #dce5f0;
+    /* Cohesive architectural two-tone light mode: cool slate ground, pure white cards, and slate header bands. */
+    --ground: #eef2f6;
     --surface: #ffffff;
-    --header: #c7d9ed;
-    --header-line: #9bb8d9;
-    --header-warning: #fde68a;
+    --header: #e2e8f0;
+    --header-line: #cbd5e1;
+    --header-warning: #fef3c7;
     --header-warning-line: #f59e0b;
-    --header-danger: #fecdd3;
-    --header-danger-line: #f43f5e;
-    --header-data: #ddd6fe;
-    --header-data-line: #8b5cf6;
-    --header-positive: #a7f3d0;
-    --header-positive-line: #10b981;
-    --raised: #e2e8f0;
-    --raised-hover: #cbd5e1;
-    --row-hover: rgb(226 232 240 / 0.7);
+    --header-danger: #e2e8f0;
+    --header-danger-line: #cbd5e1;
+    --header-data: #e2e8f0;
+    --header-data-line: #cbd5e1;
+    --header-positive: #e2e8f0;
+    --header-positive-line: #cbd5e1;
+    --raised: #f1f5f9;
+    --raised-hover: #e2e8f0;
+    --row-hover: rgb(241 245 249 / 0.85);
     --scrim: rgb(15 23 42 / 0.45);
     --danger-fill: #e11d48;
     --danger-fill-hover: #be123c;
-    --border: #b6c8dc;
-    --rule: #dce5f0;
+    --border: #cbd5e1;
+    --rule: #e2e8f0;
     --control: #94a3b8;
     --text: #0f172a;
     --text-2: #334155;
-    --muted: #475569;
+    --muted: #64748b;
     --accent: #0d9488;
     --data: #5b54a8;
     --sev-critical: #e11d48;
@@ -114,8 +114,8 @@
     --pill-positive-bg: rgb(5 150 105 / 0.1);
     --pill-positive-line: rgb(5 150 105 / 0.28);
     --pill-positive-ink: #047857;
-    --pill-neutral-bg: rgb(226 232 240 / 0.85);
-    --pill-neutral-line: rgb(148 163 184 / 0.6);
+    --pill-neutral-bg: rgb(226 232 240 / 0.9);
+    --pill-neutral-line: rgb(148 163 184 / 0.65);
     --pill-neutral-ink: #334155;
     --heat-1: rgb(225 29 72 / 0.12);
     --heat-2: rgb(225 29 72 / 0.28);

@@ -2,14 +2,15 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 import { PanelBoundary } from "./panel-boundary";
 
-export type PanelTone = "accent" | "warning" | "danger" | "data" | "positive";
+export type PanelTone = "accent" | "alert" | "warning" | "danger" | "data" | "positive";
 
 const HEADER_STYLE: Record<PanelTone, { band: string; mark: string }> = {
   accent: { band: "border-header-line bg-header", mark: "bg-accent" },
-  warning: { band: "border-header-warning-line bg-header-warning", mark: "bg-sev-high" },
-  danger: { band: "border-header-danger-line bg-header-danger", mark: "bg-sev-critical" },
-  data: { band: "border-header-data-line bg-header-data", mark: "bg-data" },
-  positive: { band: "border-header-positive-line bg-header-positive", mark: "bg-positive" },
+  alert: { band: "border-header-warning-line bg-header-warning", mark: "bg-sev-high" },
+  warning: { band: "border-header-line bg-header", mark: "bg-sev-high" },
+  danger: { band: "border-header-line bg-header", mark: "bg-sev-critical" },
+  data: { band: "border-header-line bg-header", mark: "bg-data" },
+  positive: { band: "border-header-line bg-header", mark: "bg-positive" },
 };
 
 export function Card({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
