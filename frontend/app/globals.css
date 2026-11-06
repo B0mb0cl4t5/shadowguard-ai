@@ -8,7 +8,16 @@
     /* A deep blue ground and cards, so the screen has colour before any data is drawn. */
     --ground: #0b1120;
     --surface: #131c31;
-    --header: #18243f;
+    --header: #1c2f52;
+    --header-line: #2e4a7d;
+    --header-warning: rgb(217 119 6 / 0.28);
+    --header-warning-line: rgb(245 158 11 / 0.45);
+    --header-danger: rgb(225 29 72 / 0.28);
+    --header-danger-line: rgb(244 63 94 / 0.45);
+    --header-data: rgb(109 40 217 / 0.28);
+    --header-data-line: rgb(137 129 203 / 0.45);
+    --header-positive: rgb(5 150 105 / 0.26);
+    --header-positive-line: rgb(16 185 129 / 0.45);
     --raised: #1e2a45;
     --raised-hover: #2b3a5c;
     --row-hover: rgb(30 42 69 / 0.6);
@@ -59,22 +68,31 @@
 
   html.light {
     color-scheme: light;
-    /* Two-tone light mode: cool slate canvas, crisp white cards, and tinted panel headers. */
-    --ground: #e8eef6;
+    /* Two-tone light mode: deeper cool slate canvas, crisp white cards, and rich tinted panel headers. */
+    --ground: #dce5f0;
     --surface: #ffffff;
-    --header: #f1f6fc;
+    --header: #c7d9ed;
+    --header-line: #9bb8d9;
+    --header-warning: #fde68a;
+    --header-warning-line: #f59e0b;
+    --header-danger: #fecdd3;
+    --header-danger-line: #f43f5e;
+    --header-data: #ddd6fe;
+    --header-data-line: #8b5cf6;
+    --header-positive: #a7f3d0;
+    --header-positive-line: #10b981;
     --raised: #e2e8f0;
     --raised-hover: #cbd5e1;
     --row-hover: rgb(226 232 240 / 0.7);
     --scrim: rgb(15 23 42 / 0.45);
     --danger-fill: #e11d48;
     --danger-fill-hover: #be123c;
-    --border: #cbd5e1;
-    --rule: #e2e8f0;
+    --border: #b6c8dc;
+    --rule: #dce5f0;
     --control: #94a3b8;
     --text: #0f172a;
     --text-2: #334155;
-    --muted: #64748b;
+    --muted: #475569;
     --accent: #0d9488;
     --data: #5b54a8;
     --sev-critical: #e11d48;
@@ -161,7 +179,16 @@
   html.light {
     --ground: #ffffff;
     --surface: #ffffff;
-    --header: #f3f4f6;
+    --header: #e5e7eb;
+    --header-line: #9ca3af;
+    --header-warning: #f3f4f6;
+    --header-warning-line: #9ca3af;
+    --header-danger: #f3f4f6;
+    --header-danger-line: #9ca3af;
+    --header-data: #f3f4f6;
+    --header-data-line: #9ca3af;
+    --header-positive: #f3f4f6;
+    --header-positive-line: #9ca3af;
     --raised: #e5e7eb;
     --border: #9ca3af;
     --rule: #d1d5db;
