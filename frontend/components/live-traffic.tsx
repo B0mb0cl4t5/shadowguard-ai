@@ -75,6 +75,7 @@ export function LiveTraffic({
     <Panel
       title="Live traffic"
       note={`Newest first, from your network logs, checked every ${checkEveryMs / 1000} seconds. It shows tools and departments, never people.`}
+      tone="positive"
       className={className}
       bodyClassName="py-2"
       action={

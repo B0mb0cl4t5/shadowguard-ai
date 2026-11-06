@@ -406,7 +406,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles), unless the viewer
           picked the full page; the other tabs scroll. */}
       <div className={tab === "overview" && layout === "fit" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
-      <header className="border-b border-line">
+      <header className="border-b border-line bg-surface">
         <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8 dense:min-h-12 dense:py-1.5">
           <div className="flex min-w-0 items-center gap-2.5">
             <ShieldMark size={22} className="shrink-0 text-accent" />
@@ -567,12 +567,13 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                 {/* Proposals need action, so on a phone they come first. */}
                 <div className="order-first col-span-12 flex flex-col gap-6 xl:order-none xl:col-span-4 dense:contents">
                   <DecisionQueue pending={pending} data={data} role={role} now={now} onReview={setReview} className="dense:col-span-3 dense:col-start-7 dense:row-span-4 dense:row-start-1" />
-                  <Panel title="Exposure by severity" note="Each tool in each department" className="flex-1 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-4">
+                  <Panel title="Exposure by severity" note="Each tool in each department" tone="danger" className="flex-1 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-4">
                     <SeverityRing counts={data.severity_breakdown} />
                   </Panel>
                 </div>
                 <Panel
                   title="Risk exposure index, last 14 days"
+                  tone="data"
                   className="col-span-12 md:col-span-6 xl:col-span-4 dense:col-span-3 dense:col-start-7 dense:row-span-4 dense:row-start-5"
                   bodyClassName="pt-3"
                 >
@@ -580,6 +581,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                 </Panel>
                 <Panel
                   title="Most exposed departments"
+                  tone="warning"
                   className="col-span-12 md:col-span-6 xl:col-span-4 dense:col-span-3 dense:col-start-10 dense:row-span-3 dense:row-start-7"
                   bodyClassName="pt-3"
                 >
@@ -587,6 +589,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                 </Panel>
                 <Panel
                   title="Detections per day"
+                  tone="data"
                   className="col-span-12 xl:col-span-4 dense:col-span-3 dense:col-start-7 dense:row-span-4 dense:row-start-9"
                   bodyClassName="pt-3"
                   action={
@@ -627,10 +630,10 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           {tab === "tools" && (
             <TabPanel id="tools">
               <div className="grid grid-cols-12 gap-6">
-                <Panel title="Risk map" note="Top right is what to deal with first." className="col-span-12 xl:col-span-8" bodyClassName="pt-3">
+                <Panel title="Risk map" note="Top right is what to deal with first." tone="danger" className="col-span-12 xl:col-span-8" bodyClassName="pt-3">
                   <RiskMap apps={data.apps} exposureWindowDays={data.exposure_window_days} onOpen={setSelected} />
                 </Panel>
-                <Panel title="Who trains on your data" note="From each vendor's privacy policy" className="col-span-12 xl:col-span-4">
+                <Panel title="Who trains on your data" note="From each vendor's privacy policy" tone="warning" className="col-span-12 xl:col-span-4">
                   <TrainingBreakdown apps={data.apps} onOpen={setSelected} />
                 </Panel>
                 <AppsPanel

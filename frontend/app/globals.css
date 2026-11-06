@@ -8,6 +8,7 @@
     /* A deep blue ground and cards, so the screen has colour before any data is drawn. */
     --ground: #0b1120;
     --surface: #131c31;
+    --header: #18243f;
     --raised: #1e2a45;
     --raised-hover: #2b3a5c;
     --row-hover: rgb(30 42 69 / 0.6);
@@ -58,8 +59,10 @@
 
   html.light {
     color-scheme: light;
-    --ground: #f1f5f9;
+    /* Two-tone light mode: cool slate canvas, crisp white cards, and tinted panel headers. */
+    --ground: #e8eef6;
     --surface: #ffffff;
+    --header: #f1f6fc;
     --raised: #e2e8f0;
     --raised-hover: #cbd5e1;
     --row-hover: rgb(226 232 240 / 0.7);
@@ -158,6 +161,7 @@
   html.light {
     --ground: #ffffff;
     --surface: #ffffff;
+    --header: #f3f4f6;
     --raised: #e5e7eb;
     --border: #9ca3af;
     --rule: #d1d5db;

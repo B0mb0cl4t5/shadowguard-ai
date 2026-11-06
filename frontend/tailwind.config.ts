@@ -14,6 +14,7 @@ const config: Config = {
       scrim: "var(--scrim)",
       ground: "var(--ground)",
       surface: "var(--surface)",
+      header: "var(--header)",
       raised: "var(--raised)",
       "raised-hover": "var(--raised-hover)",
       "row-hover": "var(--row-hover)",

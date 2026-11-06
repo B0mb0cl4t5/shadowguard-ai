@@ -7,12 +7,15 @@ import { AnimatedNumber } from "./animated-number";
 import { ExposureGauge, UnitDots } from "./insight-charts";
 import { Card } from "./ui/card";
 
-function Metric({ label, value, sub, visual }: { label: string; value: ReactNode; sub: ReactNode; visual: ReactNode }) {
+function Metric({ label, mark = "bg-accent", value, sub, visual }: { label: string; mark?: string; value: ReactNode; sub: ReactNode; visual: ReactNode }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-4 border-rule px-5 py-3.5 dense:py-2 [&:not(:first-child)]:border-t lg:[&:not(:first-child)]:border-l lg:[&:not(:first-child)]:border-t-0">
       {/* On one screen (dense) the label and figure share a line, so the strip is one line shorter. */}
       <div className="min-w-0 dense:flex dense:flex-wrap dense:items-baseline dense:gap-x-2">
-        <p className="text-sm text-ink2">{label}</p>
+        <p className="flex items-center gap-2 text-sm font-medium text-ink2">
+          <span className={`h-2.5 w-1 shrink-0 rounded-full ${mark}`} aria-hidden />
+          {label}
+        </p>
         <p className="mt-0.5 font-mono text-lg font-medium tracking-tight text-ink dense:mt-0 dense:leading-none">{value}</p>
         <p className="mt-0.5 text-sm text-muted dense:mt-1 dense:w-full dense:truncate">{sub}</p>
       </div>
@@ -53,6 +56,7 @@ export function KpiRow({ data }: { data: Dashboard }) {
       />
       <Metric
         label="Open risks"
+        mark="bg-sev-critical"
         value={
           <span className={k.active_leak_risks > 0 ? "text-negative" : undefined}>
             <AnimatedNumber value={k.active_leak_risks} />
@@ -63,6 +67,7 @@ export function KpiRow({ data }: { data: Dashboard }) {
       />
       <Metric
         label="Shadow AI tools"
+        mark="bg-data"
         value={<AnimatedNumber value={k.shadow_ai_apps} />}
         sub={
           // The dots beside this show severity by colour, so the words carry it too.
@@ -80,6 +85,7 @@ export function KpiRow({ data }: { data: Dashboard }) {
       />
       <Metric
         label="Pending reviews"
+        mark="bg-sev-high"
         value={
           <span className={k.pending_approvals > 0 ? "text-warning" : undefined}>
             <AnimatedNumber value={k.pending_approvals} />

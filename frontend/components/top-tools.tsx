@@ -25,6 +25,7 @@ export function TopTools({
   return (
     <Panel
       title="Most exposed tools"
+      tone="danger"
       className={className}
       bodyClassName="py-2"
       action={

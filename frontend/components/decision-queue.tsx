@@ -32,7 +32,7 @@ export function DecisionQueue({
   const worstFirst = scored.sort((a, b) => (b.context.exposure?.score ?? 0) - (a.context.exposure?.score ?? 0));
 
   return (
-    <Panel title="Block proposals" note="Nothing is blocked until an admin approves it." className={className} bodyClassName="py-2">
+    <Panel title="Block proposals" note="Nothing is blocked until an admin approves it." tone="warning" className={className} bodyClassName="py-2">
       {worstFirst.length === 0 ? (
         <div className="py-3">
           <EmptyState>No proposals waiting. A new one appears when a tool reaches Critical.</EmptyState>
