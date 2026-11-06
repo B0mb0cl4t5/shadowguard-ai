@@ -40,6 +40,7 @@ const MAX_TEST_CHARS = 200_000;
 export function VendorDrawer({
   app,
   role,
+  now,
   policiesChangedAt,
   exposureWindowDays,
   onClose,
@@ -47,6 +48,7 @@ export function VendorDrawer({
 }: {
   app: ShadowApp;
   role: Role;
+  now?: number;
   /** When any vendor's policy was last re-read, so an open drawer picks up the new reading. */
   policiesChangedAt: string | null;
   /** Configured exposure window in days (from backend `EXPOSURE_WINDOW_DAYS`). */
@@ -157,7 +159,7 @@ export function VendorDrawer({
             <AnalysisView
               analysis={vendor}
               label="Vendor posture"
-              meta={vendor.analyzed_at ? relativeTime(vendor.analyzed_at) : undefined}
+              meta={vendor.analyzed_at ? relativeTime(vendor.analyzed_at, now) : undefined}
             />
           )}
 
@@ -195,12 +197,13 @@ export function VendorDrawer({
             )}
           </section>
 
-          <IncidentTimeline app={app} />
+          <IncidentTimeline app={app} now={now} />
 
           {vendor?.policy_history[0] && <FullPolicy text={vendor.policy_history[0].policy_text} truncated={vendor.policy_history[0].truncated} url={vendor.policy_url} />}
 
           {role === "admin" && (
             <PolicyTester
+              key={app.vendor_id}
               vendorId={app.vendor_id}
               vendorName={app.vendor}
               onSaved={async () => {
@@ -270,10 +273,19 @@ function AnalysisView({ analysis, label, meta }: { analysis: PolicyAnalysis; lab
           <VerificationBadge status={analysis.verification_status} />
         </div>
         {analysis.verification_status === "unverified" && (
-          <p className="mt-1 text-xs text-warning">
-            <span className="font-semibold">Score floor active:</span> one or more policy claims failed quote
-            verification, so this score is floored at High. The real risk may be higher.
-          </p>
+          <div className="mt-1 space-y-1 text-xs text-warning">
+            <p>
+              <span className="font-semibold">Score floor active:</span> one or more policy claims failed quote
+              verification, so this score is floored at High. The real risk may be higher.
+            </p>
+            {analysis.verification_notes.length > 0 && !analysis.factors.some((f) => f.label === "Unverified policy") && (
+              <ul className="list-disc space-y-0.5 pl-4">
+                {analysis.verification_notes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
         <p className="mt-2 text-xs text-muted">
           {analysis.extractor === "gemini" ? "Read by Gemini and cross-checked by rules" : "Read by the rule-based extractor"},
@@ -339,7 +351,11 @@ function PolicyTester({ vendorId, vendorName, onSaved }: { vendorId: number; ven
   const [saved, setSaved] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
   // The stage samples are not anyone's real policy, so they can't be saved as one.
-  const savable = text.trim().length >= 50 && !text.includes(INJECTION) && text.trim() !== SAMPLE_POLICY;
+  const savable =
+    text.trim().length >= 50 &&
+    !text.includes(INJECTION) &&
+    !text.includes(SAMPLE_POLICY) &&
+    (!result || result.injection_flags.length === 0);
 
   async function save() {
     setBusy(true);
@@ -424,6 +440,8 @@ function PolicyTester({ vendorId, vendorName, onSaved }: { vendorId: number; ven
             onClick={() => {
               setText(SAMPLE_POLICY);
               setResult(null);
+              setSaved(false);
+              setError(null);
             }}
           >
             Load clean sample
@@ -434,6 +452,8 @@ function PolicyTester({ vendorId, vendorName, onSaved }: { vendorId: number; ven
               const base = text.trim() || SAMPLE_POLICY;
               setText(base.includes(INJECTION) ? base : `${base} ${INJECTION}`);
               setResult(null);
+              setSaved(false);
+              setError(null);
             }}
           >
             Insert injection
@@ -544,7 +564,7 @@ function FactorRow({
  * Incident timeline: how this tool's exposure evolved, built from the
  * dates we actually have (first seen, policy changed, last seen).
  */
-function IncidentTimeline({ app }: { app: ShadowApp }) {
+function IncidentTimeline({ app, now }: { app: ShadowApp; now?: number }) {
   const events: { when: string; label: string; detail: string; tone: "danger" | "warning" | "info" | "success" }[] = [];
 
   events.push({
@@ -584,7 +604,7 @@ function IncidentTimeline({ app }: { app: ShadowApp }) {
           >
             <p className="flex items-baseline justify-between gap-2 text-sm">
               <span className="font-medium text-ink">{ev.label}</span>
-              <span className="font-mono text-xs text-muted">{relativeTime(ev.when)}</span>
+              <span className="font-mono text-xs text-muted">{relativeTime(ev.when, now)}</span>
             </p>
             <p className="mt-0.5 text-xs text-ink2">{ev.detail}</p>
           </li>

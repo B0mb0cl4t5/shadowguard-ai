@@ -44,9 +44,12 @@ def validate_database_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"postgres", "postgresql"}:
         raise DatabaseNotConfigured("DATABASE_URL must be a postgres:// URL")
-    query = parse_qs(parsed.query)
+    query = parse_qs(parsed.query, keep_blank_values=True)
     sslmode = (query.get("sslmode") or [""])[0].lower()
-    is_local = all(h in LOCAL_HOSTS or h.startswith("/") for h in _connection_hosts(parsed, query))
+    hosts = _connection_hosts(parsed, query)
+    has_override = bool(query.get("host") or query.get("hostaddr"))
+    allowed_local = LOCAL_HOSTS - {""} if has_override else LOCAL_HOSTS
+    is_local = bool(hosts) and all(h in allowed_local or h.startswith("/") for h in hosts)
     if not is_local and sslmode not in STRONG_SSL_MODES:
         raise DatabaseNotConfigured("Remote databases require sslmode=require (or stricter)")
     return url

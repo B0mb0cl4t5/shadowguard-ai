@@ -54,7 +54,9 @@ export function severityFor(score: number): Severity {
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
 export function relativeTime(iso: string, now: number = Date.now()): string {
-  const diff = (new Date(iso).getTime() - now) / 1000;
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time) || !Number.isFinite(now)) return "—";
+  const diff = (time - now) / 1000;
   const abs = Math.abs(diff);
   if (abs < 45) return "just now";
   if (abs < 3600) return rtf.format(Math.round(diff / 60), "minute");
@@ -77,7 +79,9 @@ export function formatBytes(bytes: number): string {
 /** Seconds count up for the first minute, so a live feed visibly moves. */
 /** A short age for a traffic row ("4s ago", "51m ago", "2h ago", "3d ago"), so it fits one narrow column. */
 export function secondsAgo(iso: string, now: number): string {
-  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time) || !Number.isFinite(now)) return "—";
+  const seconds = Math.max(0, Math.round((now - time) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;

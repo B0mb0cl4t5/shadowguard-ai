@@ -70,8 +70,11 @@ export async function roleForCredentials(username: string, password: string): Pr
     verifyPassword(password, process.env.DASHBOARD_ADMIN_CODE_HASH),
     verifyPassword(password, process.env.DASHBOARD_VIEWER_CODE_HASH),
   ]);
+  const adminUser = usernameFor(process.env.DASHBOARD_ADMIN_USERNAME, "admin");
+  const viewerUser = usernameFor(process.env.DASHBOARD_VIEWER_USERNAME, "viewer");
+  if (adminUser === viewerUser) return null;
   const name = username.trim().toLowerCase();
-  if (adminPassword && name === usernameFor(process.env.DASHBOARD_ADMIN_USERNAME, "admin")) return "admin";
-  if (viewerPassword && name === usernameFor(process.env.DASHBOARD_VIEWER_USERNAME, "viewer")) return "viewer";
+  if (adminPassword && name === adminUser) return "admin";
+  if (viewerPassword && name === viewerUser) return "viewer";
   return null;
 }

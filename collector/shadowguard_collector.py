@@ -30,6 +30,7 @@ import ipaddress
 import json
 import os
 import secrets
+import socket
 import sys
 import time
 import urllib.error
@@ -93,12 +94,28 @@ def is_safe_api_url(url: str) -> bool:
     return parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in LOCAL_HOSTS)
 
 
+NAT64_NET = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _unwrap_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped:
+            return ip.ipv4_mapped
+        if ip.sixtofour:
+            return ip.sixtofour
+        if ip.teredo:
+            return ip.teredo[1]
+        if ip in NAT64_NET:
+            return ipaddress.IPv4Address(ip.packed[-4:])
+    return ip
+
+
 def public_ip(addr: str | None) -> str | None:
     try:
-        ip = ipaddress.ip_address(addr or "")
+        ip = _unwrap_ip(ipaddress.ip_address(addr or ""))
     except ValueError:
         return None
-    return str(ip) if ip.is_global else None
+    return str(ip) if ip.is_global and not ip.is_multicast else None
 
 
 @dataclass(eq=False)  # each connection is its own record, so it can sit in a set
@@ -119,6 +136,7 @@ class Collector:
         self.user_hash = user_hash
         self.dry_run = dry_run
         self.flows: set[Flow] = set()
+        self.pending: list[dict] = []
 
     # ---- proxying
 
@@ -135,19 +153,49 @@ class Collector:
             writer.close()
             return
         if method.upper() == "CONNECT":
-            host, _, port = target.rpartition(":")
-            await self.tunnel(reader, writer, host.strip("[]"), int(port or 443), None)
+            host, _, port_str = target.rpartition(":")
+            try:
+                port = int(port_str or 443)
+            except ValueError:
+                writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+                writer.close()
+                return
+            await self.tunnel(reader, writer, host.strip("[]"), port, None)
         else:
             parts = urlsplit(target)
+            try:
+                port = parts.port or 80
+            except ValueError:
+                writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+                writer.close()
+                return
             if not parts.hostname:
                 writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
                 writer.close()
                 return
-            await self.tunnel(reader, writer, parts.hostname, parts.port or 80, head)
+            await self.tunnel(reader, writer, parts.hostname, port, head)
 
     async def tunnel(self, reader, writer, host: str, port: int, first: bytes | None) -> None:
+        if not host or port not in (80, 443):
+            writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+            writer.close()
+            return
         try:
-            up_reader, up_writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=15)
+            infos = await asyncio.wait_for(
+                asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM),
+                timeout=10,
+            )
+        except (OSError, asyncio.TimeoutError):
+            writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+            writer.close()
+            return
+        if not infos or not all(public_ip(info[4][0]) is not None for info in infos):
+            writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+            writer.close()
+            return
+        target_ip = infos[0][4][0]
+        try:
+            up_reader, up_writer = await asyncio.wait_for(asyncio.open_connection(target_ip, port), timeout=15)
         except (OSError, asyncio.TimeoutError):
             writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
             writer.close()
@@ -156,7 +204,7 @@ class Collector:
         flow = None
         if domain:
             peer = up_writer.get_extra_info("peername")
-            flow = Flow(host=domain, dest_ip=public_ip(peer[0] if peer else None))
+            flow = Flow(host=domain, dest_ip=public_ip(peer[0] if peer else target_ip))
             self.flows.add(flow)
         if first is None:
             writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -191,9 +239,12 @@ class Collector:
     def take_events(self) -> list[dict]:
         """Turn the bytes counted since the last report into events, one per site."""
         now = datetime.now(timezone.utc).isoformat()
-        per_host: dict[str, dict] = {}
+        per_host: dict[str, dict] = {e["domain"]: e for e in self.pending[:MAX_BATCH]}
+        self.pending.clear()
         for flow in list(self.flows):
             if flow.out_bytes or flow.in_bytes:
+                if flow.host not in per_host and len(per_host) >= MAX_BATCH:
+                    continue
                 event = per_host.setdefault(flow.host, {
                     "observed_at": now, "department": self.department, "user_hash": self.user_hash,
                     "domain": flow.host, "bytes_out": 0, "bytes_in": 0, "source": "proxy",
@@ -231,6 +282,8 @@ class Collector:
             if not events:
                 continue
             outcome = await asyncio.to_thread(self.send, events)
+            if outcome.startswith("not sent:") or outcome == "rejected: HTTP 429" or outcome.startswith("rejected: HTTP 5"):
+                self.pending = events[:MAX_BATCH]
             for e in events:
                 print(f"{time.strftime('%H:%M:%S')}  {e['domain']:<28} out {e['bytes_out']:>9,} B  "
                       f"in {e['bytes_in']:>10,} B  {outcome}", flush=True)

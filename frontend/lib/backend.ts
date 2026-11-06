@@ -30,7 +30,12 @@ function baseUrl(): string {
   // run at build time or in middleware.
   const raw = (process.env.SHADOWGUARD_API_URL ?? "").trim().replace(/\/+$/, "");
   if (!raw) throw new BackendError(503, "SHADOWGUARD_API_URL is not configured");
-  const url = new URL(raw);
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new BackendError(503, "SHADOWGUARD_API_URL is invalid");
+  }
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" && !local) {
     // Never send an API key over plaintext HTTP to a remote host.
@@ -65,6 +70,9 @@ export async function backendFetch<T>(
     });
   } catch (err) {
     if (err instanceof BackendError) throw err;
+    if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new BackendError(504, "The risk engine took too long to respond");
+    }
     throw new BackendError(502, "The risk engine is unreachable");
   }
   if (!res.ok) {

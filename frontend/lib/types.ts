@@ -176,14 +176,19 @@ export interface PolicyVersion {
 
 /** Result of a policy analysis (stored vendor or a dry run from the live test box). */
 export interface PolicyAnalysis {
+  vendor_id?: number;
   posture_score: number;
   severity: Severity;
   factors: Factor[];
   answers: Record<string, string>;
   evidence: Evidence[];
   injection_flags: string[];
+  discarded_claims?: number;
   verification_status: "verified" | "unverified";
   verification_notes: string[];
   extractor: "rules" | "gemini";
+  source?: "submitted" | "fetched" | "stored";
+  pairs_rescored?: number;
+  remediation_actions?: number;
   dry_run?: boolean;
 }

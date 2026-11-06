@@ -52,7 +52,7 @@ function isNew(app: ShadowApp, now: number) {
 }
 
 const matches = (app: ShadowApp, filter: SeverityFilter) =>
-  filter === "all" || app.departments.some((d) => d.severity === filter);
+  filter === "all" || app.severity === filter;
 
 export function AppsPanel({
   data,
@@ -297,6 +297,6 @@ function PolicyChangedBadge({ className = "" }: { className?: string }) {
 
 const CHANGED_WINDOW_MS = 14 * 24 * 3600 * 1000;
 
-function policyChanged(app: ShadowApp, now: number) {
+export function policyChanged(app: ShadowApp, now: number = Date.now()) {
   return app.policy_changed_at !== null && now - new Date(app.policy_changed_at).getTime() < CHANGED_WINDOW_MS;
 }

@@ -2,10 +2,11 @@
 
 import { useEffect, useRef } from "react";
 
-import { relativeTime } from "@/lib/format";
+import { relativeTime, titleCase } from "@/lib/format";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { ShadowApp } from "@/lib/types";
 
+import { policyChanged } from "./apps-panel";
 import { ChevronIcon, CloseIcon } from "./icons";
 import { Badge, SeverityBadge, VerificationBadge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -18,11 +19,13 @@ import { Panel } from "./ui/card";
 export function CompareDialog({
   appA,
   appB,
+  now,
   onClose,
   onOpen,
 }: {
   appA: ShadowApp;
   appB: ShadowApp;
+  now?: number;
   onClose: () => void;
   onOpen: (app: ShadowApp) => void;
 }) {
@@ -34,7 +37,12 @@ export function CompareDialog({
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
   }, [onClose]);
 
   const higher = appA.max_score === appB.max_score ? null : appA.max_score > appB.max_score ? appA : appB;
@@ -61,8 +69,8 @@ export function CompareDialog({
         </header>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <ToolComparisonCard app={appA} onOpen={onOpen} />
-          <ToolComparisonCard app={appB} onOpen={onOpen} />
+          <ToolComparisonCard app={appA} now={now} onOpen={onOpen} />
+          <ToolComparisonCard app={appB} now={now} onOpen={onOpen} />
         </div>
 
         <div className="mt-6">
@@ -96,14 +104,14 @@ export function CompareDialog({
   );
 }
 
-function ToolComparisonCard({ app, onOpen }: { app: ShadowApp; onOpen: (app: ShadowApp) => void }) {
+function ToolComparisonCard({ app, now, onOpen }: { app: ShadowApp; now?: number; onOpen: (app: ShadowApp) => void }) {
   const depts = [...app.departments].sort((a, b) => b.score - a.score);
   const worst = depts[0];
   return (
     <Panel title={app.name} note={`${app.domain}, by ${app.vendor}`} className="flex flex-col" bodyClassName="pt-3 flex-1">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Badge>{app.category}</Badge>
-        {app.policy_changed_at && (
+        <Badge>{titleCase(app.category)}</Badge>
+        {policyChanged(app, now) && (
           <Badge tone="warning" title="Policy changed recently">Policy changed</Badge>
         )}
         <SeverityBadge severity={app.severity} score={app.max_score} />
@@ -121,7 +129,7 @@ function ToolComparisonCard({ app, onOpen }: { app: ShadowApp; onOpen: (app: Sha
         </div>
         <div className="flex justify-between">
           <dt>Last seen</dt>
-          <dd className="font-mono text-ink">{relativeTime(app.last_seen, Date.now())}</dd>
+          <dd className="font-mono text-ink">{relativeTime(app.last_seen, now)}</dd>
         </div>
         {app.alternative && (
           <div className="flex justify-between">
@@ -138,7 +146,7 @@ function ToolComparisonCard({ app, onOpen }: { app: ShadowApp; onOpen: (app: Sha
         <ul className="mb-4 space-y-1.5">
           {depts.map((d) => (
             <li key={d.department} className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-ink">{d.department}</span>
+              <span className={`min-w-0 truncate ${d.status === "open" ? "text-ink" : "text-muted line-through"}`}>{d.department}</span>
               <SeverityBadge severity={d.severity} score={d.score} />
             </li>
           ))}

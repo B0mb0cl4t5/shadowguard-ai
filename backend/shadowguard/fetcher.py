@@ -40,10 +40,20 @@ class FetchError(RuntimeError):
     """The page could not be fetched safely."""
 
 
+NAT64_NET = ipaddress.ip_network("64:ff9b::/96")
+
+
 def _is_public(addr: str) -> bool:
     ip = ipaddress.ip_address(addr)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        elif ip.sixtofour:
+            ip = ip.sixtofour
+        elif ip.teredo:
+            ip = ip.teredo[1]
+        elif ip in NAT64_NET:
+            ip = ipaddress.IPv4Address(ip.packed[-4:])
     return ip.is_global and not ip.is_multicast
 
 

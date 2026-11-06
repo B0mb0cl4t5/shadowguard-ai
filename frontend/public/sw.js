@@ -43,10 +43,10 @@ self.addEventListener("fetch", (event) => {
       fetch(req).catch(
         () =>
           new Response(
-            "<!doctype html><meta name=viewport content='width=device-width'><title>Offline</title>" +
+            "<!doctype html><html><head><meta name=viewport content='width=device-width'><title>Offline</title></head>" +
               "<body style='background:#0b1120;color:#cbd5e1;font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0'>" +
-              "<p>ShadowGuard is offline. Reconnect to see live risk data.</p>",
-            { headers: { "Content-Type": "text/html; charset=utf-8" } },
+              "<p>ShadowGuard is offline. Reconnect to see live risk data.</p></body></html>",
+            { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } },
           ),
       ),
     );

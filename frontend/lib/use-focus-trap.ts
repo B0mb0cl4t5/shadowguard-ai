@@ -11,10 +11,15 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>) {
     const previous = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || !ref.current) return;
-      const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (el) => el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0,
+      );
       const first = items[0];
       const last = items[items.length - 1];
-      if (!first || !last) return;
+      if (!first || !last) {
+        e.preventDefault();
+        return;
+      }
       const active = document.activeElement;
       if (e.shiftKey && (active === first || !ref.current.contains(active))) {
         e.preventDefault();

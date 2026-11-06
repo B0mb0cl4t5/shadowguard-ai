@@ -30,7 +30,9 @@ export async function requireSession(roles: Role[]): Promise<Session | NextRespo
  */
 export function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const trustProxy = process.env.VERCEL === "1" || process.env.TRUST_PROXY?.trim().toLowerCase() === "true";
+  const forwardedHost = trustProxy ? request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() : undefined;
+  const host = (forwardedHost || request.headers.get("host"))?.trim();
   if (!origin || !host) return false;
   try {
     return new URL(origin).host === host;

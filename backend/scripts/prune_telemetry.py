@@ -25,7 +25,7 @@ from shadowguard.db import validate_database_url  # noqa: E402
 def main() -> None:
     url = validate_database_url(os.getenv("DATABASE_URL", "").strip())
     days = get_settings().telemetry_retention_days
-    with psycopg.connect(url, prepare_threshold=None) as conn:
+    with psycopg.connect(url, autocommit=True, prepare_threshold=None) as conn:
         removed = repo.prune_telemetry(conn, days)
     print(f"Deleted {removed} traffic events older than {days} days.")
 

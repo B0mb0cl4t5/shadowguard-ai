@@ -11,6 +11,7 @@ const buckets = new Map<string, number[]>();
 export function allow(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
   const hits = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  buckets.delete(key);
   if (hits.length >= limit) {
     buckets.set(key, hits);
     return false;
@@ -18,8 +19,13 @@ export function allow(key: string, limit: number, windowMs: number): boolean {
   hits.push(now);
   buckets.set(key, hits);
   if (buckets.size > 5000) {
-    // Bound memory under a spray of spoofed client keys.
-    for (const k of Array.from(buckets.keys()).slice(0, 2500)) buckets.delete(k);
+    // Bound memory under a spray of spoofed client keys: drop expired buckets first, then oldest.
+    for (const [k, v] of buckets) {
+      if (v.length === 0 || now - v[v.length - 1]! >= 3_600_000) buckets.delete(k);
+    }
+    if (buckets.size > 5000) {
+      for (const k of Array.from(buckets.keys()).slice(0, 2500)) buckets.delete(k);
+    }
   }
   return true;
 }

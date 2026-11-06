@@ -29,13 +29,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const id = parseId((await params).id);
   if (id === null) return NextResponse.json({ detail: "Invalid vendor id" }, { status: 400 });
 
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_POLICY * 4) {
+    return NextResponse.json({ detail: "Policy text is too long" }, { status: 413 });
+  }
+
   const forward: { fetch?: boolean; policy_text?: string; persist?: boolean } = {};
   try {
     const raw = await request.text();
     if (raw.length > MAX_POLICY * 4) {
       return NextResponse.json({ detail: "Policy text is too long" }, { status: 413 });
     }
-    const body = (raw ? JSON.parse(raw) : {}) as { fetch?: unknown; policy_text?: unknown; persist?: unknown };
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("body");
+    }
+    const body = parsed as { fetch?: unknown; policy_text?: unknown; persist?: unknown };
+    if (body.fetch !== undefined && typeof body.fetch !== "boolean") throw new Error("fetch");
+    if (body.persist !== undefined && typeof body.persist !== "boolean") throw new Error("persist");
+    if (body.fetch === true && body.policy_text !== undefined) throw new Error("both");
     if (body.policy_text !== undefined) {
       if (typeof body.policy_text !== "string") throw new Error("policy_text");
       const text = body.policy_text.trim();

@@ -5,7 +5,7 @@ export function reviewContext(item: Remediation, data: Pick<Dashboard, "apps" | 
   const app = data.apps.find((a) => a.name === item.app);
   const exposure = app?.departments.find((d) => d.department === item.department);
   const nudge = data.remediations.find(
-    (r) => r.action_type === "nudge" && r.app === item.app && r.department === item.department,
+    (r) => r.action_type === "nudge" && r.status !== "failed" && r.app === item.app && r.department === item.department,
   );
   return {
     exposure,

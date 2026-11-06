@@ -87,15 +87,20 @@ class SlidingWindowLimiter:
     def allow(self, bucket: str, limit: int, window_seconds: float = 60.0) -> bool:
         now = time.monotonic()
         with self._lock:
-            q = self._hits.setdefault(bucket, deque())
+            q = self._hits.pop(bucket, None) or deque()
             while q and now - q[0] > window_seconds:
                 q.popleft()
             if len(q) >= limit:
+                self._hits[bucket] = q
                 return False
             q.append(now)
+            self._hits[bucket] = q
             if len(self._hits) > 10_000:  # bound memory under a spray of fake clients
-                for key in list(self._hits)[:5_000]:
+                for key in [k for k, v in self._hits.items() if not v or now - v[-1] > window_seconds]:
                     self._hits.pop(key, None)
+                if len(self._hits) > 10_000:
+                    for key in list(self._hits)[:5_000]:
+                        self._hits.pop(key, None)
             return True
 
 

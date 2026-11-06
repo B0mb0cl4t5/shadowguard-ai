@@ -226,7 +226,7 @@ export function DetectionColumns({ points }: { points: TrendPoint[] }) {
   const active = points[index]!;
   const choose = (clientX: number) => {
     const rect = plot.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || rect.width <= 0) return;
     const ratio = Math.min(0.999, Math.max(0, (clientX - rect.left) / rect.width));
     setPick(Math.floor(ratio * points.length));
   };
@@ -307,7 +307,15 @@ const ZONES: { severity: Severity; from: number; to: number; tint: string }[] = 
  * The risk map: how exposed each tool is against how many people use it, so the
  * top right is what to deal with first. A larger dot reaches more departments.
  */
-export function RiskMap({ apps, onOpen }: { apps: ShadowApp[]; onOpen: (app: ShadowApp) => void }) {
+export function RiskMap({
+  apps,
+  exposureWindowDays = 7,
+  onOpen,
+}: {
+  apps: ShadowApp[];
+  exposureWindowDays?: number;
+  onOpen: (app: ShadowApp) => void;
+}) {
   const [hover, setHover] = useState<number | null>(null);
   const xMax = Math.ceil(Math.max(10, ...apps.map((a) => a.total_users)) / 10) * 10;
   // Round ticks, at most five steps across whatever the user count is.
@@ -400,7 +408,9 @@ export function RiskMap({ apps, onOpen }: { apps: ShadowApp[]; onOpen: (app: Sha
           </span>
         ))}
       </div>
-      <p className="ml-8 mt-1 text-xs text-muted">Users in the last 7 days across the university. A larger dot reaches more departments.</p>
+      <p className="ml-8 mt-1 text-xs text-muted">
+        Users in the last <span className="font-mono">{exposureWindowDays}</span> days across the university. A larger dot reaches more departments.
+      </p>
     </div>
   );
 }

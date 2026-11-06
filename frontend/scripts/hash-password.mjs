@@ -23,6 +23,10 @@ function done(code, generated) {
     console.error("Use at least 12 characters.");
     process.exit(1);
   }
+  if (code.length > 128) {
+    console.error("Use at most 128 characters.");
+    process.exit(1);
+  }
   if (generated) console.log(`\nPassword (share privately, shown once):\n  ${code}`);
   console.log(`\nHash for the environment variable:\n  ${hash(code)}\n`);
 }

@@ -33,13 +33,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Too many attempts. Try again shortly." }, { status: 429 });
   }
 
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > 4096) {
+    return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+  }
+
   let username = "";
   let password = "";
   try {
-    const body = (await request.json()) as { username?: unknown; password?: unknown };
-    if (typeof body.username === "string") username = body.username;
-    // hash-password trims what it hashes, and a copied password can pick up spaces.
-    if (typeof body.password === "string") password = body.password.trim();
+    const parsed: unknown = await request.json();
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      const body = parsed as { username?: unknown; password?: unknown };
+      if (typeof body.username === "string") username = body.username;
+      // hash-password trims what it hashes, and a copied password can pick up spaces.
+      if (typeof body.password === "string") password = body.password.trim();
+    }
   } catch {
     /* fall through to the generic failure */
   }

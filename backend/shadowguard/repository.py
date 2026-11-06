@@ -194,9 +194,9 @@ def shadow_apps(conn: psycopg.Connection, severity: str | None = None, sort: str
           LEFT JOIN LATERAL (
                 SELECT COUNT(*) AS n, MAX(captured_at) AS latest,
                        (SELECT posture_score FROM policy_versions
-                          WHERE vendor_id = v.id ORDER BY captured_at DESC LIMIT 1) AS latest_score,
+                          WHERE vendor_id = v.id ORDER BY captured_at DESC, id DESC LIMIT 1) AS latest_score,
                        (SELECT posture_score FROM policy_versions
-                          WHERE vendor_id = v.id ORDER BY captured_at DESC LIMIT 1 OFFSET 1) AS previous_score
+                          WHERE vendor_id = v.id ORDER BY captured_at DESC, id DESC LIMIT 1 OFFSET 1) AS previous_score
                   FROM policy_versions WHERE vendor_id = v.id
           ) pv ON TRUE
           LEFT JOIN LATERAL (
@@ -278,12 +278,14 @@ def dashboard_kpis(conn: psycopg.Connection) -> Row:
         SELECT
           (SELECT COUNT(DISTINCT e.app_id) FROM app_exposure e
              JOIN saas_apps a ON a.id = e.app_id
-            WHERE a.approved = FALSE AND a.is_ai = TRUE)                              AS shadow_ai_apps,
+            WHERE a.approved = FALSE AND a.is_ai = TRUE AND e.status = 'open')         AS shadow_ai_apps,
           (SELECT COUNT(*) FROM security_incidents WHERE status = 'open')            AS active_leak_risks,
           (SELECT COUNT(*) FROM remediation_actions
             WHERE created_at >= NOW() - INTERVAL '24 hours')                          AS remediations_24h,
           (SELECT COUNT(*) FROM remediation_actions WHERE status = 'pending_approval') AS pending_approvals,
-          (SELECT COUNT(DISTINCT department_id) FROM app_exposure)                    AS departments_affected
+          (SELECT COUNT(DISTINCT e.department_id) FROM app_exposure e
+             JOIN saas_apps a ON a.id = e.app_id
+            WHERE a.approved = FALSE AND a.is_ai = TRUE AND e.status = 'open')         AS departments_affected
         """
     ).fetchone()
 
@@ -293,7 +295,7 @@ def open_exposure_rows(conn: psycopg.Connection) -> list[tuple[int, int]]:
         """
         SELECT e.exposure_score, e.events
           FROM app_exposure e JOIN saas_apps a ON a.id = e.app_id
-         WHERE a.approved = FALSE AND e.status = 'open'
+         WHERE a.approved = FALSE AND a.is_ai = TRUE AND e.status = 'open'
         """
     ).fetchall()
     return [(r["exposure_score"], r["events"]) for r in rows]
@@ -304,7 +306,7 @@ def severity_breakdown(conn: psycopg.Connection) -> dict[str, int]:
         """
         SELECT e.severity, COUNT(*)::int AS n
           FROM app_exposure e JOIN saas_apps a ON a.id = e.app_id
-         WHERE a.approved = FALSE AND e.status = 'open'
+         WHERE a.approved = FALSE AND a.is_ai = TRUE AND e.status = 'open'
          GROUP BY e.severity
         """
     ).fetchall()
@@ -336,8 +338,8 @@ def department_exposure(conn: psycopg.Connection) -> list[Row]:
     return conn.execute(
         """
         SELECT d.name, d.data_class, d.sensitivity::float AS sensitivity,
-               COALESCE(MAX(e.exposure_score) FILTER (WHERE a.approved = FALSE AND e.status = 'open'), 0) AS max_score,
-               COUNT(e.app_id) FILTER (WHERE a.approved = FALSE AND e.status = 'open')::int AS shadow_tools
+               COALESCE(MAX(e.exposure_score) FILTER (WHERE a.approved = FALSE AND a.is_ai = TRUE AND e.status = 'open'), 0) AS max_score,
+               COUNT(e.app_id) FILTER (WHERE a.approved = FALSE AND a.is_ai = TRUE AND e.status = 'open')::int AS shadow_tools
           FROM departments d
           LEFT JOIN app_exposure e ON e.department_id = d.id
           LEFT JOIN saas_apps a    ON a.id = e.app_id
@@ -604,7 +606,9 @@ def rate_limit_hit(conn: psycopg.Connection, checks: list[tuple[str, int, int]])
                      WHERE h.bucket = a.bucket AND h.hit_at > NOW() - make_interval(secs => a.secs)) AS used
             FROM asked a
         ), recorded AS (
-            INSERT INTO rate_limit_hits (bucket) SELECT bucket FROM counted WHERE used < cap RETURNING 1
+            INSERT INTO rate_limit_hits (bucket)
+            SELECT bucket FROM counted WHERE (SELECT bool_and(used < cap) FROM counted)
+            RETURNING 1
         )
         SELECT bool_and(used < cap) AS allowed FROM counted
         """,

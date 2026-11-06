@@ -33,6 +33,40 @@ export const Button = forwardRef<
   return <button ref={ref} type={type} className={`${styles} ${className}`} {...props} />;
 });
 
+/** A few mutually exclusive choices side by side, like a view switch. The chosen one sits on a raised fill. */
+export function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  className = "",
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; title?: string }[];
+  onChange: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className={`inline-flex items-center rounded-md border border-control p-0.5 ${className}`}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={o.value === value}
+          title={o.title}
+          onClick={() => onChange(o.value)}
+          className={`inline-flex min-h-7 items-center whitespace-nowrap rounded px-2.5 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-11 ${
+            o.value === value ? "bg-raised text-ink" : "text-muted hover:text-ink"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** A small filter inside a panel: selection is a line as wide as its label. */
 export function TabButton({
   selected,

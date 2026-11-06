@@ -193,8 +193,17 @@ export function CommandPalette({
   let lastGroup = "";
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]">
-      <Button variant="bare" aria-label="Close command menu" className="absolute inset-0 bg-scrim" onClick={onClose} />
+    <div
+      className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <Button variant="bare" tabIndex={-1} aria-label="Close command menu" className="absolute inset-0 bg-scrim" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"

@@ -22,7 +22,7 @@ import { ReviewDialog } from "./review-dialog";
 import { TopTools } from "./top-tools";
 import { TrafficMap } from "./traffic-map";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Button, Segmented } from "./ui/button";
 import { Panel } from "./ui/card";
 import { TabPanel, Tabs } from "./ui/tabs";
 import { Toaster } from "./toaster";
@@ -64,6 +64,18 @@ function loadToolsView(): Partial<ToolsView> {
     };
   } catch {
     return {};
+  }
+}
+
+// How the Overview is laid out on a big enough window: everything on one screen, or the full scrolling page.
+type OverviewLayout = "fit" | "full";
+const LAYOUT_KEY = "shadowguard:overview-layout";
+
+function loadLayout(): OverviewLayout {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === "full" ? "full" : "fit";
+  } catch {
+    return "fit";
   }
 }
 
@@ -112,6 +124,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   const [isMac, setIsMac] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [layout, setLayout] = useState<OverviewLayout>("fit");
   const [compareApps, setCompareApps] = useState<ShadowApp[]>([]);
   const inFlight = useRef(false);
   const refreshAgain = useRef(false);
@@ -140,6 +153,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
   useEffect(() => {
     setView((current) => ({ ...current, ...loadToolsView() }));
+    setLayout(loadLayout());
     const saved = loadReducedMotion();
     setReduceMotion(saved);
     document.documentElement.classList.toggle("reduce-motion", saved);
@@ -150,6 +164,16 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       applyReducedMotion(!current);
       return !current;
     });
+  }, []);
+
+  // Saved on a change, not on load, like the tools view.
+  const chooseLayout = useCallback((next: OverviewLayout) => {
+    setLayout(next);
+    try {
+      localStorage.setItem(LAYOUT_KEY, next);
+    } catch {
+      /* The choice still applies for this visit. */
+    }
   }, []);
 
   const openTab = useCallback((next: TabId) => {
@@ -208,6 +232,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
         const next = (await res.json()) as Dashboard;
         setData(next);
         setStale(false);
+        dirty.current = false;
+        lastFull.current = Date.now();
         if (!refreshAgain.current) break;
       }
     } catch {
@@ -233,7 +259,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       }
       if (!res.ok) throw new Error(String(res.status));
       const feed = (await res.json()) as LiveFeed;
-      afterId.current = Math.max(afterId.current, feed.latest_event_id);
+      afterId.current = feed.latest_event_id < afterId.current ? feed.latest_event_id : Math.max(afterId.current, feed.latest_event_id);
       setLive((current) => {
         const incoming = new Set(feed.events.map((e) => e.id));
         return {
@@ -249,8 +275,6 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       revision.current = feed.revision;
       const sinceFull = Date.now() - lastFull.current;
       if ((dirty.current && sinceFull >= REFETCH_GAP_MS) || sinceFull >= FULL_REFRESH_MS) {
-        dirty.current = false;
-        lastFull.current = Date.now();
         void refresh();
       }
     } catch {
@@ -277,9 +301,11 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     };
   }, [pollLive]);
 
-  // Keep the open drawer in sync with fresh data.
+  // Keep open dialogs and drawers in sync with fresh data.
   useEffect(() => {
     setSelected((s) => (s ? (data.apps.find((a) => a.id === s.id) ?? s) : s));
+    setCompareApps((prev) => prev.map((c) => data.apps.find((a) => a.id === c.id) ?? c));
+    setReview((r) => (r ? (data.remediations.find((x) => x.id === r.id && x.status === "pending_approval") ?? null) : null));
   }, [data]);
 
   // ⌘K / Ctrl+K opens the command menu from anywhere.
@@ -327,7 +353,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
   const logout = useCallback(async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(TIMEOUT_MS.request) });
+      const res = await fetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(TIMEOUT_MS.request) });
+      if (!res.ok) throw new Error(String(res.status));
       window.location.assign("/login");
     } catch (err) {
       toast({ title: "Couldn't sign out", description: failureMessage(err, "The server didn't answer. Try again."), tone: "danger" });
@@ -363,8 +390,9 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
   return (
     <>
-      {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles); the other tabs scroll. */}
-      <div className={tab === "overview" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
+      {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles), unless the viewer
+          picked the full page; the other tabs scroll. */}
+      <div className={tab === "overview" && layout === "fit" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
       <header className="border-b border-line">
         <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8 dense:min-h-12 dense:py-1.5">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -410,6 +438,19 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             >
               <MotionIcon size={16} />
             </Button>
+            {/* Only where it changes something: the Overview, on a window big enough to fit it on one screen. */}
+            {tab === "overview" && (
+              <Segmented
+                label="Overview layout"
+                value={layout}
+                onChange={chooseLayout}
+                className="hidden [@media(min-width:1280px)_and_(min-height:740px)]:inline-flex"
+                options={[
+                  { value: "fit", label: "Fit to screen", title: "Every Overview block on one screen" },
+                  { value: "full", label: "Full page", title: "Bigger charts and full lists; the page scrolls" },
+                ]}
+              />
+            )}
             {/* One tool picked so far: the dialog opens by itself when a second is chosen. */}
             {compareApps.length === 1 && (
               <Button
@@ -565,7 +606,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             <TabPanel id="tools">
               <div className="grid grid-cols-12 gap-6">
                 <Panel title="Risk map" note="Top right is what to deal with first." className="col-span-12 xl:col-span-8" bodyClassName="pt-3">
-                  <RiskMap apps={data.apps} onOpen={setSelected} />
+                  <RiskMap apps={data.apps} exposureWindowDays={data.exposure_window_days} onOpen={setSelected} />
                 </Panel>
                 <Panel title="Who trains on your data" note="From each vendor's privacy policy" className="col-span-12 xl:col-span-4">
                   <TrainingBreakdown apps={data.apps} onOpen={setSelected} />
@@ -597,7 +638,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
           {tab === "departments" && (
             <TabPanel id="departments">
-              <DepartmentHeatmap apps={data.apps} departments={data.departments} onOpen={setSelected} />
+              <DepartmentHeatmap apps={data.apps} departments={data.departments} exposureWindowDays={data.exposure_window_days} onOpen={setSelected} />
             </TabPanel>
           )}
         </div>
@@ -612,8 +653,10 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
       {selected && (
         <VendorDrawer
+          key={selected.id}
           app={selected}
           role={role}
+          now={now}
           policiesChangedAt={live.policiesChangedAt}
           exposureWindowDays={data.exposure_window_days}
           onClose={() => setSelected(null)}
@@ -625,6 +668,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
         <CompareDialog
           appA={compareApps[0]!}
           appB={compareApps[1]!}
+          now={now}
           onClose={clearCompare}
           onOpen={(app) => {
             clearCompare();

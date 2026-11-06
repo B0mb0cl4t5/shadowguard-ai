@@ -30,6 +30,7 @@ from .config import get_settings
 from .db import DatabaseNotConfigured, get_connection
 from .fetcher import FetchError, UnsafeURLError, fetch_policy_text
 from .models import AnalyseRequest, DecisionRequest, RateLimitRequest, Severity, SortKey, TelemetryBatch
+from .scoring import severity_for
 from .security import SECURITY_HEADERS, Principal, require_role
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -77,12 +78,14 @@ async def hardening(request: Request, call_next):
     declared = request.headers.get("content-length")
     if declared is not None:
         try:
-            too_big = int(declared) > MAX_BODY_BYTES
+            length = int(declared)
         except ValueError:
             return _harden(JSONResponse({"detail": "Invalid Content-Length"}, status_code=400), request_id)
-        if too_big:
+        if length < 0:
+            return _harden(JSONResponse({"detail": "Invalid Content-Length"}, status_code=400), request_id)
+        if length > MAX_BODY_BYTES:
             return _harden(JSONResponse({"detail": "Request body too large"}, status_code=413), request_id)
-    elif request.method == "POST" and request.headers.get("transfer-encoding", "").lower() == "chunked":
+    elif request.method == "POST" and "chunked" in request.headers.get("transfer-encoding", "").lower():
         # Refuse unbounded streamed bodies; legitimate clients send a length.
         return _harden(JSONResponse({"detail": "Content-Length required"}, status_code=411), request_id)
     return _harden(await call_next(request), request_id)
@@ -147,8 +150,11 @@ def list_apps(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ):
     with get_connection() as conn:
-        return {"apps": repo.shadow_apps(conn, severity=severity, sort=sort, limit=limit,
-                                         window_days=get_settings().exposure_window_days)}
+        apps = repo.shadow_apps(conn, severity=severity, sort=sort, limit=limit,
+                                window_days=get_settings().exposure_window_days)
+    for a in apps:
+        a["severity"] = severity_for(a["max_score"])
+    return {"apps": apps}
 
 
 @app.get("/api/v1/vendors/{vendor_id}")

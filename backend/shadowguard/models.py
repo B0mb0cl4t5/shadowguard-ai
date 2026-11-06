@@ -23,6 +23,7 @@ DEPARTMENT_RE = re.compile(r"^[A-Za-z0-9 &()'.,-]{2,80}$")
 DOCUMENTATION_NETS = tuple(
     ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32")
 )
+NAT64_NET = ipaddress.ip_network("64:ff9b::/96")
 
 
 class StrictModel(BaseModel):
@@ -69,8 +70,15 @@ class TelemetryEvent(StrictModel):
             ip = ipaddress.ip_address(v)
         except ValueError:
             raise ValueError("dest_ip must be a bare IP address (no port or hostname)") from None
-        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-            ip = ip.ipv4_mapped
+        if isinstance(ip, ipaddress.IPv6Address):
+            if ip.ipv4_mapped:
+                ip = ip.ipv4_mapped
+            elif ip.sixtofour:
+                ip = ip.sixtofour
+            elif ip.teredo:
+                ip = ip.teredo[1]
+            elif ip in NAT64_NET:
+                ip = ipaddress.IPv4Address(ip.packed[-4:])
         if not any(ip in net for net in DOCUMENTATION_NETS) and (not ip.is_global or ip.is_multicast):
             raise ValueError("dest_ip must be a public address")
         return str(ip)

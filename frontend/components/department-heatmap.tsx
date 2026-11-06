@@ -19,10 +19,12 @@ const KEY = [
 export function DepartmentHeatmap({
   apps,
   departments,
+  exposureWindowDays = 7,
   onOpen,
 }: {
   apps: ShadowApp[];
   departments: DepartmentExposure[];
+  exposureWindowDays?: number;
   onOpen: (app: ShadowApp) => void;
 }) {
   const rows = [...departments].sort((a, b) => b.max_score - a.max_score || a.name.localeCompare(b.name));
@@ -31,7 +33,7 @@ export function DepartmentHeatmap({
   return (
     <Panel
       title="Department heatmap"
-      note="Exposure of each department to each tool, last 7 days. Blank means no use; struck through means mitigated."
+      note={`Exposure of each department to each tool, last ${exposureWindowDays} days. Blank means no use; struck through means mitigated.`}
       action={
         <ul className="flex flex-wrap items-center gap-3 text-xs text-ink2" aria-label="Score bands">
           {KEY.map(({ severity, floor }) => (

@@ -39,7 +39,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
 
   const pick = (clientX: number) => {
     const rect = ref.current?.getBoundingClientRect();
-    if (!rect || points.length < 2) return;
+    if (!rect || rect.width <= 0 || points.length < 2) return;
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     setHover(Math.round(ratio * (points.length - 1)));
   };

@@ -283,7 +283,7 @@ test("only the Overview fits one screen, and only on a window big enough to hold
   assert.match(variant, /min-height:\s*740px/);
   assert.match(variant, /\.one-screen &/);
   const shell = files.find((f) => f.name === "components/dashboard-shell.tsx");
-  assert.match(shell.text, /tab === "overview" \? "one-screen/);
+  assert.match(shell.text, /tab === "overview" && layout === "fit" \? "one-screen/);
   // The class is set in one place, so the other tabs keep their scrolling layout.
   assert.equal(offenders(/["'`]one-screen[\s"'`]/).join(), "components/dashboard-shell.tsx");
   assert.equal((shell.text.match(/["'`]one-screen[\s"'`]/g) ?? []).length, 1);

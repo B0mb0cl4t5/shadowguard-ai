@@ -21,10 +21,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const id = parseId((await params).id);
   if (id === null) return NextResponse.json({ detail: "Invalid action id" }, { status: 400 });
 
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > 4096) {
+    return NextResponse.json({ detail: "Request body too large" }, { status: 413 });
+  }
+
   let decision: "approve" | "reject";
   let note = "";
   try {
-    const body = (await request.json()) as { decision?: unknown; note?: unknown };
+    const parsed: unknown = await request.json();
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("body");
+    const body = parsed as { decision?: unknown; note?: unknown };
     if (body.decision !== "approve" && body.decision !== "reject") throw new Error("decision");
     decision = body.decision;
     if (body.note !== undefined) {
