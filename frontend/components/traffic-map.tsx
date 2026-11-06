@@ -22,23 +22,39 @@ const REGION_PATHS = Object.fromEntries(
   Object.entries(REGION_LAND).map(([id, keep]) => [id, dotPath(keep)]),
 ) as Partial<Record<DataLocation, string>>;
 
-/** The university is in Malaysia, which is why the scoring treats Malaysia as home. */
+/** The university is in Kuala Lumpur, Peninsular Malaysia. */
 const HOME = project(101.7, 3.1);
 
-/** Whole regions, not data centres. Singapore and Malaysia sit beside the campus, so they're nudged clear of its marker. */
-const REGIONS: Record<DataLocation, { label: string; at?: Point }> = {
-  US: { label: "United States", at: project(-98, 39) },
-  EU: { label: "Europe", at: project(10, 50) },
-  SG: { label: "Singapore", at: project(108, -7) },
-  MY: { label: "Malaysia", at: project(93, 12) },
-  OTHER: { label: "Elsewhere, outside these regions" },
-  unknown: { label: "Policy doesn't say" },
+/**
+ * Every region has a coordinate on the map canvas so no traffic is ever hidden in one-screen mode:
+ * - US, EU, SG, MY sit on their real geography (MY in East Malaysia / Borneo so it stands clear of KL).
+ * - OTHER sits in Asia-Pacific / Oceania, and `unknown` sits in an Atlantic "Unstated region" callout zone.
+ */
+const REGIONS: Record<
+  DataLocation,
+  {
+    label: string;
+    shortLabel: string;
+    at: Point;
+    labelPosition: "top" | "bottom" | "right";
+    unstated?: boolean;
+  }
+> = {
+  US: { label: "United States", shortLabel: "US", at: project(-98, 39), labelPosition: "top" },
+  EU: { label: "Europe", shortLabel: "EU", at: project(12, 50), labelPosition: "top" },
+  SG: { label: "Singapore", shortLabel: "SG", at: project(103.8, 1.3), labelPosition: "bottom" },
+  MY: { label: "Malaysia", shortLabel: "MY", at: project(114.5, 3.5), labelPosition: "right" },
+  OTHER: { label: "Elsewhere, outside these regions", shortLabel: "Elsewhere", at: project(135, -24), labelPosition: "bottom" },
+  unknown: { label: "Policy doesn't say", shortLabel: "Unstated", at: project(-38, 24), labelPosition: "top", unstated: true },
 };
 
 type Flow = {
   id: DataLocation;
   label: string;
-  at?: Point;
+  shortLabel: string;
+  at: Point;
+  labelPosition: "top" | "bottom" | "right";
+  unstated?: boolean;
   apps: ShadowApp[];
   bytes: number;
   bytesIn: number;
@@ -70,7 +86,7 @@ function busiestIps(apps: ShadowApp[]): DestinationIp[] {
 }
 
 const arcPath = ([x1, y1]: Point, [x2, y2]: Point, bend: number) => {
-  const lift = Math.min(150, Math.hypot(x2 - x1, y2 - y1) * bend);
+  const lift = Math.min(140, Math.max(18, Math.hypot(x2 - x1, y2 - y1) * bend));
   return `M${x1.toFixed(1)} ${y1.toFixed(1)} Q${((x1 + x2) / 2).toFixed(1)} ${(Math.min(y1, y2) - lift).toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
 };
 const outPath = (at: Point) => arcPath(HOME, at, 0.28);
@@ -98,7 +114,6 @@ function usePulses(events: LiveEvent[]): Pulse[] {
     const fresh = events.filter((e) => !known.has(e.id));
     fresh.forEach((e) => known.add(e.id));
     const batch = fresh
-      .filter((e) => REGIONS[e.data_location].at)
       .slice(0, MAX_PULSES_PER_BATCH)
       .flatMap((e, i): Pulse[] => [
         ...(e.bytes_out > 0 ? [{ key: `${e.id}-out`, region: e.data_location, direction: "out" as const, delay: i * 500 }] : []),
@@ -124,21 +139,32 @@ function usePulses(events: LiveEvent[]): Pulse[] {
 }
 
 /**
- * A dot's details card, kept on the map: below dots near the top, above the rest. On a phone it
- * spans the map's width; from tablet width up it sits beside the dot, flipped to the dot's left
- * near the right edge.
+ * A dot's details card, kept on the map: below dots near the top, above the rest.
+ * Interactive so the viewer can click a tool name inside the tooltip to open its drawer.
  */
-function DotDetails({ at, children }: { at: Point; children: ReactNode }) {
+function DotDetails({
+  at,
+  onKeepOpen,
+  onLeave,
+  children,
+}: {
+  at: Point;
+  onKeepOpen: () => void;
+  onLeave: () => void;
+  children: ReactNode;
+}) {
   const x = (at[0] / W) * 100;
   const y = (at[1] / H) * 100;
-  const below = y < 45;
+  const below = y < 48;
   const align = x > 62 ? "sm:-translate-x-full" : x < 30 ? "" : "sm:-translate-x-1/2";
   return (
     <div
       id="map-dot-details"
       role="tooltip"
-      className={`pointer-events-none absolute inset-x-0 z-10 rounded-md border border-control bg-raised p-3 text-xs sm:right-auto sm:left-[var(--dot-x)] sm:w-72 ${align} ${below ? "" : "-translate-y-full"}`}
-      style={{ "--dot-x": `${x}%`, top: `calc(${y}% ${below ? "+" : "-"} 22px)` } as CSSProperties}
+      onPointerEnter={(e) => e.pointerType === "mouse" && onKeepOpen()}
+      onPointerLeave={(e) => e.pointerType === "mouse" && onLeave()}
+      className={` absolute inset-x-2 z-20 rounded-md border border-control bg-surface p-3 text-xs sm:right-auto sm:left-[var(--dot-x)] sm:w-72 ${align} ${below ? "" : "-translate-y-full"}`}
+      style={{ "--dot-x": `${x}%`, top: `calc(${y}% ${below ? "+" : "-"} 18px)` } as CSSProperties}
     >
       {children}
     </div>
@@ -147,9 +173,8 @@ function DotDetails({ at, children }: { at: Point; children: ReactNode }) {
 
 /**
  * Traffic between the campus and the region each vendor's policy says it stores data
- * in, with dots sized by outbound volume. A vendor with no stated region is listed but
- * not placed. IPs are listed rather than plotted: most are shared CDN addresses, so
- * where one is hosted says little about where the data ends up.
+ * in, with dots and arc thickness scaled by outbound volume. Every region (including
+ * `OTHER` and `unknown`) is plotted so nothing disappears in one-screen mode.
  */
 export function TrafficMap({
   apps,
@@ -165,15 +190,31 @@ export function TrafficMap({
   const [active, setActive] = useState<DataLocation | null>(null);
   // The dot whose details card is open: on hover, tap or keyboard focus, never hover alone.
   const [tip, setTip] = useState<DataLocation | "campus" | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pulses = usePulses(events);
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
   const showTip = (id: DataLocation | "campus") => {
+    clearCloseTimer();
     setTip(id);
     setActive(id === "campus" ? null : id);
   };
+
   const hideTip = () => {
-    setTip(null);
-    setActive(null);
+    clearCloseTimer();
+    closeTimer.current = setTimeout(() => {
+      setTip(null);
+      setActive(null);
+    }, 120);
   };
+
+  useEffect(() => () => clearCloseTimer(), []);
 
   const flows = useMemo<Flow[]>(() => {
     const ids = Object.keys(REGIONS) as DataLocation[];
@@ -203,12 +244,12 @@ export function TrafficMap({
   const maxBytes = Math.max(maxOut, ...flows.map((f) => f.bytesIn));
   const total = flows.reduce((sum, f) => sum + f.bytes, 0);
   const totalIn = flows.reduce((sum, f) => sum + f.bytesIn, 0);
-  const placed = flows.filter((f) => f.at);
-  const size = (f: Flow) => 7 + 15 * Math.sqrt(f.bytes / maxOut);
-  const dim = (f: Flow) => (active && active !== f.id ? 0.2 : 1);
+  const size = (f: Flow) => 6.5 + 12.5 * Math.sqrt(f.bytes / maxOut);
+  const arcWidth = (f: Flow) => (1.75 + 2.0 * Math.sqrt(f.bytes / maxOut)).toFixed(2);
+  const dim = (f: Flow) => (active && active !== f.id ? 0.22 : 1);
 
   const stats = (
-    <dl className="flex gap-x-6 gap-y-2 sm:flex-col">
+    <dl className="flex gap-x-6 gap-y-2 rounded-md border border-rule bg-surface px-3 py-2 sm:flex-col">
       <div>
         <dt className="text-xs text-muted">Sent</dt>
         <dd className="font-mono text-lg font-medium leading-tight text-ink">
@@ -236,66 +277,84 @@ export function TrafficMap({
   );
 
   // On one screen (dense) the totals stand in a column beside the map, the map takes the panel's height,
-  // and the legend and region list give way: each dot's details card carries the same figures.
+  // and the legend and region list give way: each dot's details card and pill carry the same figures.
   return (
-    <div className="dense:flex dense:h-full dense:min-h-0 dense:gap-5">
-      <div className="hidden dense:flex dense:shrink-0 dense:flex-col dense:justify-end">{stats}</div>
-      <div className="relative dense:mx-auto dense:aspect-[1000/392] dense:h-full dense:max-w-full dense:flex-none">
+    <div className="dense:flex dense:h-full dense:min-h-0 dense:gap-4">
+      <div className="hidden dense:flex dense:shrink-0 dense:flex-col dense:justify-between">
+        {stats}
+        <ul className="hidden space-y-1.5 rounded-md border border-rule bg-surface px-3 py-2 text-xs text-ink2 dense:block">
+          <li className="flex items-center gap-1.5">
+            <span className="h-0.5 w-3.5 rounded-full bg-sev-critical" /> Outbound
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-0.5 w-3.5 border-b border-dashed border-data" /> Inbound
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-accent" /> Campus
+          </li>
+        </ul>
+      </div>
+      <div className="relative rounded-lg border border-rule bg-ground p-2 dense:mx-auto dense:aspect-[1000/392] dense:h-full dense:max-w-full dense:flex-none">
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block w-full overflow-visible"
           role="img"
           aria-label={`Traffic with campus: ${formatBytes(total)} out, ${formatBytes(totalIn)} in. ${flows.map((f) => `${f.label}: ${formatBytes(f.bytes)} out, ${formatBytes(f.bytesIn)} in`).join(". ")}.`}
         >
-          <path d={LAND_PATH} fill="none" style={{ stroke: "var(--raised-hover)" }} strokeWidth="3.4" strokeLinecap="round" />
-          {placed.map((f) => (
-            <path
-              key={f.id}
-              d={REGION_PATHS[f.id]}
-              fill="none"
-              style={{ stroke: SEVERITY_STYLE[f.worst].stroke, opacity: dim(f) * 0.8 }}
-              strokeWidth="3.4"
-              strokeLinecap="round"
-              className="transition-opacity"
-            />
-          ))}
+          {/* Subtle latitude / equator reference lines for spatial orientation */}
+          <line x1="20" y1={project(0, 0)[1]} x2={W - 20} y2={project(0, 0)[1]} style={{ stroke: "var(--rule)" }} strokeWidth="1" strokeDasharray="3 6" />
+          <path d={LAND_PATH} fill="none" style={{ stroke: "var(--control)" }} opacity="0.55" strokeWidth="3.6" strokeLinecap="round" />
+          {flows.map((f) =>
+            REGION_PATHS[f.id] ? (
+              <path
+                key={f.id}
+                d={REGION_PATHS[f.id]}
+                fill="none"
+                style={{ stroke: SEVERITY_STYLE[f.worst].stroke, opacity: dim(f) * 0.85 }}
+                strokeWidth="3.8"
+                strokeLinecap="round"
+                className="transition-opacity"
+              />
+            ) : null,
+          )}
           {!flows.some((f) => f.id === "MY") && (
-            <path d={REGION_PATHS.MY} fill="none" style={{ stroke: "var(--accent)" }} opacity="0.7" strokeWidth="3.4" strokeLinecap="round" />
+            <path d={REGION_PATHS.MY} fill="none" style={{ stroke: "var(--accent)" }} opacity="0.75" strokeWidth="3.8" strokeLinecap="round" />
           )}
           {/* On load each arc draws out from the campus (and back, for traffic in), then its marker lands. */}
-          {placed
+          {flows
             .filter((f) => f.bytesIn > 0)
             .map((f, i) => (
               <path
                 key={f.id}
-                d={inPath(f.at!)}
+                d={inPath(f.at)}
                 fill="none"
                 pathLength={1}
-                style={{ stroke: "var(--data)", opacity: dim(f), animationDelay: `${ARRIVE_MS + 100 + i * STAGGER_MS}ms` }}
-                strokeWidth="1"
+                style={{ stroke: "var(--data)", opacity: dim(f) * 0.9, animationDelay: `${ARRIVE_MS + 100 + i * STAGGER_MS}ms` }}
+                strokeWidth="1.6"
+                strokeDasharray="4 4"
                 vectorEffect="non-scaling-stroke"
                 strokeLinecap="round"
                 className="animate-draw transition-opacity"
               />
             ))}
-          {placed.map((f, i) => (
+          {flows.map((f, i) => (
             <path
               key={f.id}
-              d={outPath(f.at!)}
+              d={outPath(f.at)}
               fill="none"
               pathLength={1}
               style={{ stroke: SEVERITY_STYLE[f.worst].stroke, opacity: dim(f), animationDelay: `${i * STAGGER_MS}ms` }}
-              strokeWidth="1"
+              strokeWidth={arcWidth(f)}
               vectorEffect="non-scaling-stroke"
               strokeLinecap="round"
               className="animate-draw transition-opacity"
             />
           ))}
           {pulses.map((p) => {
-            const flow = placed.find((f) => f.id === p.region);
+            const flow = flows.find((f) => f.id === p.region);
             if (!flow) return null;
             const color = p.direction === "out" ? SEVERITY_STYLE[flow.worst].stroke : "var(--data)";
-            const [lx, ly] = p.direction === "out" ? flow.at! : HOME;
+            const [lx, ly] = p.direction === "out" ? flow.at : HOME;
             return (
               <g key={p.key}>
                 <circle
@@ -305,7 +364,7 @@ export function TrafficMap({
                     fill: color,
                     stroke: "var(--surface)",
                     strokeWidth: 1.5,
-                    offsetPath: `path("${p.direction === "out" ? outPath(flow.at!) : inPath(flow.at!)}")`,
+                    offsetPath: `path("${p.direction === "out" ? outPath(flow.at) : inPath(flow.at)}")`,
                     offsetRotate: "0deg",
                     animationDelay: `${p.delay}ms`,
                   }}
@@ -323,14 +382,26 @@ export function TrafficMap({
               </g>
             );
           })}
-          {placed.map((f, i) => {
-            const [x, y] = f.at!;
+          {flows.map((f, i) => {
+            const [x, y] = f.at;
+            const r = size(f);
             return (
               <g key={f.id} style={{ opacity: dim(f) }} className="transition-opacity">
+                {f.unstated && (
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={r + 4}
+                    fill="none"
+                    style={{ stroke: SEVERITY_STYLE[f.worst].stroke }}
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                )}
                 <circle
                   cx={x}
                   cy={y}
-                  r={size(f)}
+                  r={r}
                   className="animate-pop"
                   style={{
                     fill: SEVERITY_STYLE[f.worst].stroke,
@@ -339,12 +410,12 @@ export function TrafficMap({
                     transformOrigin: "center",
                     animationDelay: `${ARRIVE_MS + i * STAGGER_MS}ms`,
                   }}
-                  strokeWidth="3"
+                  strokeWidth="2.5"
                 />
               </g>
             );
           })}
-          <circle cx={HOME[0]} cy={HOME[1]} r="9" style={{ fill: "var(--surface)", stroke: "var(--accent)" }} strokeWidth="2" />
+          <circle cx={HOME[0]} cy={HOME[1]} r="9" style={{ fill: "var(--surface)", stroke: "var(--accent)" }} strokeWidth="2.5" />
           <circle cx={HOME[0]} cy={HOME[1]} r="4" style={{ fill: "var(--accent)" }} />
         </svg>
 
@@ -352,26 +423,45 @@ export function TrafficMap({
           className="pointer-events-none absolute -translate-x-full -translate-y-1/2 pr-3"
           style={{ left: `${(HOME[0] / W) * 100}%`, top: `${(HOME[1] / H) * 100}%` }}
         >
-          <span className="block whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-accent">Campus</span>
+          <span className="flex items-center gap-1.5 whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+            Campus
+          </span>
         </span>
-        {placed.map((f) => {
-          // Singapore sits under the campus marker, so its label goes below the spot rather than above.
-          const below = f.id === "SG";
+        {flows.map((f) => {
+          const r = size(f);
+          const posClass =
+            f.labelPosition === "bottom"
+              ? "-translate-x-1/2 pt-1.5"
+              : f.labelPosition === "right"
+                ? "-translate-y-1/2 pl-2"
+                : "-translate-x-1/2 -translate-y-full pb-1.5";
+          const leftPct = f.labelPosition === "right" ? ((f.at[0] + r) / W) * 100 : (f.at[0] / W) * 100;
+          const topPct =
+            f.labelPosition === "bottom"
+              ? ((f.at[1] + r) / H) * 100
+              : f.labelPosition === "top"
+                ? ((f.at[1] - r) / H) * 100
+                : (f.at[1] / H) * 100;
           return (
             <span
               key={f.id}
-              className={`pointer-events-none absolute -translate-x-1/2 ${below ? "pt-1.5" : "-translate-y-full pb-1.5"}`}
-              style={{ left: `${(f.at![0] / W) * 100}%`, top: `${((f.at![1] + (below ? size(f) : -size(f))) / H) * 100}%` }}
+              className={`pointer-events-none absolute ${posClass}`}
+              style={{ left: `${leftPct}%`, top: `${topPct}%` }}
             >
-              {/* Just the name: the figures and addresses are in the dot's details card. */}
-              <span className="block whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-ink">{f.label}</span>
+              {/* Region name, severity dot, and outbound volume right on the badge for instant scanning. */}
+              <span className="flex items-center gap-1.5 whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-ink">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${SEVERITY_STYLE[f.worst].mark}`} aria-hidden />
+                <span>{f.shortLabel}</span>
+                <span className="font-mono text-ink2">{formatBytes(f.bytes)}</span>
+              </span>
             </span>
           );
         })}
-        <div className="absolute bottom-0 left-0 hidden sm:block dense:hidden">{stats}</div>
+        <div className="absolute bottom-2 left-2 hidden sm:block dense:hidden">{stats}</div>
 
         {/* Each dot opens a details card: a mouse points at it, a finger taps it, the keyboard tabs to it. */}
-        {[{ id: "campus" as const, at: HOME, label: "Campus: where all traffic starts" }, ...placed.map((f) => ({ id: f.id, at: f.at!, label: f.label }))].map(
+        {[{ id: "campus" as const, at: HOME, label: "Campus: where all traffic starts" }, ...flows.map((f) => ({ id: f.id, at: f.at, label: f.label }))].map(
           (dot) => (
             <Button
               key={dot.id}
@@ -390,8 +480,8 @@ export function TrafficMap({
           ),
         )}
         {tip === "campus" && (
-          <DotDetails at={HOME}>
-            <p className="text-sm font-medium text-accent">Campus</p>
+          <DotDetails at={HOME} onKeepOpen={() => showTip("campus")} onLeave={hideTip}>
+            <p className="text-sm font-medium text-accent">Campus (Kuala Lumpur)</p>
             <p className="mt-0.5 text-ink2">Where all traffic to these tools starts.</p>
             <p className="mt-2 text-ink2">
               <span className="font-mono text-ink">{formatBytes(total)}</span> out, <span className="font-mono text-ink">{formatBytes(totalIn)}</span> in
@@ -404,10 +494,10 @@ export function TrafficMap({
             <p className="mt-2 text-muted">Staff addresses aren&apos;t collected.</p>
           </DotDetails>
         )}
-        {placed
+        {flows
           .filter((f) => f.id === tip)
           .map((f) => (
-            <DotDetails key={f.id} at={f.at!}>
+            <DotDetails key={f.id} at={f.at} onKeepOpen={() => showTip(f.id)} onLeave={hideTip}>
               <p className="flex items-baseline justify-between gap-3">
                 <span className="text-sm font-medium text-ink">{f.label}</span>
                 <span className={SEVERITY_STYLE[f.worst].text}>
@@ -424,8 +514,23 @@ export function TrafficMap({
                   "in not reported"
                 )}
               </p>
-              <p className="mt-2 text-muted">{f.apps.length === 1 ? "Tool" : "Tools"}</p>
-              <p className="text-ink2">{f.apps.map((a) => a.name).join(", ")}</p>
+              <p className="mt-2 text-muted">{f.apps.length === 1 ? "Tool (select to inspect)" : "Tools (select to inspect)"}</p>
+              <div className="mt-0.5 flex flex-wrap gap-1.5">
+                {f.apps.map((a) => (
+                  <Button
+                    key={a.id}
+                    variant="bare"
+                    onClick={() => {
+                      setTip(null);
+                      setActive(null);
+                      onOpen(a);
+                    }}
+                    className="rounded border border-control bg-raised px-1.5 py-0.5 text-xs font-medium text-ink transition-colors hover:bg-raised-hover"
+                  >
+                    {a.name}
+                  </Button>
+                ))}
+              </div>
               <p className="mt-2 text-muted">Destination IPs, the vendor&apos;s own</p>
               {f.ips.length === 0 ? (
                 <p className="text-ink2">Not reported</p>
@@ -449,15 +554,15 @@ export function TrafficMap({
 
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink2 dense:hidden">
         <li className="flex items-center gap-1.5">
-          <span className="h-0.5 w-4 rounded-full bg-sev-critical" /> Out, coloured by the region's worst severity
+          <span className="h-0.5 w-4 rounded-full bg-sev-critical" /> Out, coloured &amp; sized by the region&apos;s severity and volume
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="h-0.5 w-4 rounded-full bg-data" /> In
+          <span className="h-0.5 w-4 border-b border-dashed border-data" /> In (dashed)
         </li>
         <li className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-ink2" /> A moving dot is an event arriving now
         </li>
-        <li>Point at or tap a dot for its tools and addresses</li>
+        <li>Point at or tap a dot to inspect its tools and addresses</li>
       </ul>
 
       <ul className="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2 dense:hidden" onPointerLeave={() => setActive(null)}>
