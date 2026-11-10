@@ -1,0 +1,11 @@
+# Sample campus Squid proxy & FortiGate webfilter log lines.
+# Ordinary university traffic (portal, library, Google Scholar) is ignored automatically;
+# only catalogued AI tools are extracted, mapped to a department, pseudonymised, and shipped.
+1762416001.120    842 10.24.12.14 TCP_TUNNEL/200 68420 CONNECT chatgpt.com:443 raj.exams HIER_DIRECT/172.64.155.209 - 19450
+1762416004.310    120 10.24.12.14 TCP_TUNNEL/200 14200 CONNECT portal.university.edu.my:443 raj.exams HIER_DIRECT/10.10.1.50 - 1200
+1762416009.540   1120 10.24.18.33 TCP_TUNNEL/200 94310 CONNECT gradesync.app:443 dr.farah HIER_DIRECT/203.0.113.196 - 48200
+1762416015.880    610 10.24.40.19 TCP_TUNNEL/200 52100 CONNECT claude.ai:443 prof.tan HIER_DIRECT/160.79.104.10 - 15800
+1762416021.005    230 10.24.40.19 TCP_TUNNEL/200 31000 CONNECT scholar.google.com:443 prof.tan HIER_DIRECT/142.250.199.46 - 2100
+1762416028.412    950 10.24.55.08 TCP_TUNNEL/200 78400 CONNECT transcribefly.com:443 aminah.hr HIER_DIRECT/203.0.113.211 - 36900
+date=2026-11-06 time=16:00:35 user="aisyah.research" srcip=10.24.62.91 dstip=203.0.113.126 hostname="paperpilot.ai" action="passthrough" sentbyte=28400 rcvdbyte=61200
+date=2026-11-06 time=16:00:42 user="zainal.eng" srcip=10.24.71.12 dstip=142.251.220.110 hostname="gemini.google.com" action="passthrough" sentbyte=14900 rcvdbyte=43800

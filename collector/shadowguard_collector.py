@@ -53,6 +53,9 @@ BUFFER = 64 * 1024
 SALT_FILE = Path.home() / ".shadowguard" / "collector-salt"
 
 
+_FALLBACK_SALT: str | None = None
+
+
 def collector_salt(env=os.environ, path: Path = SALT_FILE) -> str:
     """The secret mixed into the account name before it is hashed.
 
@@ -61,21 +64,24 @@ def collector_salt(env=os.environ, path: Path = SALT_FILE) -> str:
     SHADOWGUARD_HASH_SALT, or a random value made on first run and kept in your user folder.
     It never leaves this computer.
     """
+    global _FALLBACK_SALT
     if env.get("SHADOWGUARD_HASH_SALT"):
         return env["SHADOWGUARD_HASH_SALT"]
     try:
         saved = path.read_text(encoding="ascii").strip()
         if saved:
             return saved
-    except FileNotFoundError:
-        pass
-    path.parent.mkdir(parents=True, exist_ok=True)
-    salt = secrets.token_hex(32)
-    path.write_text(salt, encoding="ascii")
-    try:
-        os.chmod(path, 0o600)  # owner only where the OS supports it; a Windows user folder is private already
     except OSError:
         pass
+    salt = secrets.token_hex(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(salt, encoding="ascii")
+        os.chmod(path, 0o600)  # owner only where the OS supports it; a Windows user folder is private already
+    except OSError:
+        if _FALLBACK_SALT is None:
+            _FALLBACK_SALT = salt
+        return _FALLBACK_SALT
     return salt
 
 

@@ -46,3 +46,35 @@ def test_collector_hashes_with_a_secret_salt_it_keeps(tmp_path):
     assert collector_salt(env={"SHADOWGUARD_HASH_SALT": "from-the-environment"}, path=salt_file) == "from-the-environment"
     salt_file.write_text("", encoding="ascii")
     assert len(collector_salt(env={}, path=salt_file)) == 64  # an emptied file gets a fresh secret
+
+
+def test_campus_log_shipper_parses_squid_and_fortigate_and_maps_directory():
+    import sys
+
+    sys.path.insert(0, str(ROOT / "collector"))
+    from campus_log_shipper import hash_user, load_directory, parse_log_line
+    from shadowguard.models import TelemetryEvent
+
+    directory = load_directory(ROOT / "collector" / "sample_directory.csv")
+    assert directory["raj.exams"] == "Examinations & Assessment"
+    assert directory["aisyah.research"] == "Research & Postgraduate Office"
+
+    salt = "a" * 64
+    lines = (ROOT / "collector" / "sample_squid_access.log").read_text(encoding="utf-8").splitlines()
+    events = [e for line in lines if (e := parse_log_line(line, directory, "IT Services", salt)) is not None]
+
+    # 2 non-AI lines (portal.university.edu.my, scholar.google.com) are ignored; 6 AI lines are kept.
+    assert len(events) == 6
+    assert events[0]["domain"] == "chatgpt.com"
+    assert events[0]["department"] == "Examinations & Assessment"
+    assert events[0]["user_hash"] == hash_user("raj.exams", salt)
+    assert events[0]["source"] == "proxy"
+    assert events[4]["domain"] == "paperpilot.ai"
+    assert events[4]["department"] == "Research & Postgraduate Office"
+    assert events[4]["source"] == "firewall"
+
+    # Every parsed event must pass the backend's strict Pydantic TelemetryEvent schema.
+    for event in events:
+        validated = TelemetryEvent(**event)
+        assert validated.domain == event["domain"]
+

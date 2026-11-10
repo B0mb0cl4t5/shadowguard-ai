@@ -76,9 +76,12 @@ shadowguard-ai/
 │   │   ├── notify.py            Teams webhook nudges
 │   │   ├── config.py · db.py
 │   ├── scripts/                 build_seed · init_db · migrate_db · create_api_key · simulate_live · real_catalog · prune_telemetry
-│   └── tests/                   166 tests (147 unit/security + 19 PostgreSQL integration)
+│   └── tests/                   167 tests (148 unit/security + 19 PostgreSQL integration)
 ├── collector/
-│   └── shadowguard_collector.py Laptop proxy that reports visits to AI tools (standard library only)
+│   ├── shadowguard_collector.py Laptop proxy that reports visits to AI tools (standard library only)
+│   ├── campus_log_shipper.py    Squid / FortiGate proxy log shipper with staff-directory department lookup
+│   ├── sample_squid_access.log  Sample Squid & FortiGate log lines for end-to-end testing
+│   └── sample_directory.csv     Sample staff username → department directory mapping
 ├── frontend/                    Next.js 15 (App Router, TypeScript, Tailwind) → Vercel
 │   ├── app/                     Pages + server route handlers (the browser never sees an API key)
 │   ├── components/              Screens and in-house charts, plus ui/ for the shared card, table, badge, button and input
@@ -180,6 +183,19 @@ The real tools it watches (ChatGPT, Gemini, Claude, Copilot, Perplexity, Grammar
 
 **Real policies need Gemini.** The rule-based reader matches keywords, which is fine for short policies but misreads long real ones (in testing it took a rights section that mentions the EEA as a storage location). A rules-only reading of any policy over 8,000 characters is therefore marked *Unverified* and scored as High. Set `GEMINI_API_KEY` for readings you can rely on.
 
+### Campus-wide proxy & firewall logs (`collector/campus_log_shipper.py`)
+
+For a campus-wide feed instead of a single laptop, `collector/campus_log_shipper.py` reads standard **Squid** (`access.log`) and **FortiGate** (`key=value` webfilter/traffic) logs, ignores ordinary web traffic, looks up each staff username in a directory CSV (`username,department`), hashes the username with `collector_salt()` so neither raw usernames nor client IPs leave the log host, and ships events in batches to `/api/v1/telemetry` (with `--follow` for live tailing or `--dry-run` for local verification):
+
+```bash
+# Dry-run on the included sample Squid + FortiGate log and staff directory (no API key needed)
+python collector/campus_log_shipper.py --log collector/sample_squid_access.log --directory collector/sample_directory.csv --dry-run
+
+# Ship to a live ShadowGuard deployment (add --follow to tail a live log)
+set SHADOWGUARD_INGEST_KEY=sg_ingest_...
+python collector/campus_log_shipper.py --log collector/sample_squid_access.log --directory collector/sample_directory.csv --api https://YOUR-SITE.vercel.app
+```
+
 ---
 
 ## Dashboard features
@@ -229,7 +245,7 @@ Being explicit, because judges will ask:
 | Real | Simulated in this build |
 |---|---|
 | Discovery, aggregation, scoring, incidents, the full response logic | The demo traffic and its vendors (Summarix, GradeSync…) are synthetic (`simulate_live.py`) |
-| Real visits to real AI tools, from one laptop, through the collector | Not a campus feed: a university would point the collector logic at its firewall or proxy logs instead |
+| Real visits to real AI tools from a laptop (`shadowguard_collector.py`), plus Squid / FortiGate log shipping with staff-directory lookup (`campus_log_shipper.py`) | In production, `campus_log_shipper.py` runs on the university's Squid / FortiGate log host against its live directory export |
 | Policy extraction, injection screening, quote verification, extractor cross-check (rule-based) | The Gemini path and its cross-check are implemented and unit-tested against a mocked API, but were not run against the live Gemini API |
 | Teams nudges, when `TEAMS_WEBHOOK_URL` is set | Without a webhook, nudges are logged as `simulated` |
 | Human approval / rejection with audit log | An approved block is recorded, not pushed to a firewall (FortiGate/proxy integration is the next step) |
