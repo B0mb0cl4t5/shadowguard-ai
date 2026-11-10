@@ -178,12 +178,22 @@ const config: Config = {
   plugins: [
     // `dense:` styles the one-screen Overview: on `.one-screen` and inside it, and only on a window
     // wide and tall enough to hold every block. Anything smaller keeps the scrolling layout.
-    plugin(({ addVariant }) =>
+    plugin(({ addVariant, addUtilities }) => {
       addVariant("dense", [
         "@media (min-width: 1280px) and (min-height: 740px) { &.one-screen }",
         "@media (min-width: 1280px) and (min-height: 740px) { .one-screen & }",
-      ]),
-    ),
+      ]);
+      addUtilities({
+        ".map-stage-fit": {
+          containerType: "size",
+        },
+        ".map-canvas-fit": {
+          aspectRatio: "1000 / 392",
+          width: "min(100cqw, calc(100cqh * 1000 / 392))",
+          height: "auto",
+        },
+      });
+    }),
   ],
 };
 

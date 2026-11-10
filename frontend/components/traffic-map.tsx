@@ -171,6 +171,7 @@ function DotDetails({
   const y = (at[1] / H) * 100;
   const below = y < 48;
   const align = x > 62 ? "sm:-translate-x-full" : x < 30 ? "" : "sm:-translate-x-1/2";
+  const denseDock = x > 50 ? "dense:left-1 dense:right-auto" : "dense:right-1 dense:left-auto";
   return (
     <div
       id="map-dot-details"
@@ -178,8 +179,8 @@ function DotDetails({
       aria-live="polite"
       onPointerEnter={(e) => e.pointerType === "mouse" && onKeepOpen()}
       onPointerLeave={(e) => e.pointerType === "mouse" && onLeave()}
-      className={` absolute inset-x-2 z-20 rounded-md border border-control bg-surface p-3 text-xs sm:right-auto sm:left-[var(--dot-x)] sm:w-72 ${align} ${below ? "" : "-translate-y-full"}`}
-      style={{ "--dot-x": `${x}%`, top: `calc(${y}% ${below ? "+" : "-"} 18px)` } as CSSProperties}
+      className={`absolute inset-x-2 top-[var(--dot-y)] z-20 rounded-md border border-control bg-surface p-3 text-xs sm:right-auto sm:left-[var(--dot-x)] sm:w-72 ${align} ${below ? "" : "-translate-y-full"} ${denseDock} dense:top-0 dense:bottom-0 dense:my-auto dense:h-fit dense:max-h-full dense:w-64 dense:translate-x-0 dense:translate-y-0 dense:overflow-y-auto dense:p-2.5`}
+      style={{ "--dot-x": `${x}%`, "--dot-y": `calc(${y}% ${below ? "+" : "-"} 18px)` } as CSSProperties}
     >
       {children}
     </div>
@@ -268,23 +269,23 @@ export function TrafficMap({
   const dim = (f: Flow) => (active && active !== f.id ? 0.22 : 1);
 
   const stats = (
-    <dl className="flex gap-x-6 gap-y-2 rounded-md border border-rule bg-surface px-3 py-2 sm:flex-col">
+    <dl className="flex gap-x-6 gap-y-2 rounded-md border border-rule bg-surface px-3 py-2 sm:flex-col dense:gap-y-1 dense:px-2.5 dense:py-1.5">
       <div>
         <dt className="text-xs text-muted">Sent</dt>
-        <dd className="font-mono text-lg font-medium leading-tight text-ink">
+        <dd className="font-mono text-lg font-medium leading-tight text-ink dense:text-sm">
           <AnimatedNumber value={total} format={(n) => formatBytes(Math.round(n))} />
         </dd>
       </div>
       <div>
         <dt className="text-xs text-muted">Received</dt>
-        <dd className="font-mono text-lg font-medium leading-tight text-ink">
+        <dd className="font-mono text-lg font-medium leading-tight text-ink dense:text-sm">
           {totalIn > 0 ? <AnimatedNumber value={totalIn} format={(n) => formatBytes(Math.round(n))} /> : "Not reported"}
         </dd>
       </div>
       {lastMinute && (
         <div>
           <dt className="text-xs text-muted">Last minute</dt>
-          <dd className="text-sm text-ink2">
+          <dd className="text-sm text-ink2 dense:text-xs">
             <span className="font-mono text-ink">
               <AnimatedNumber value={lastMinute.events} />
             </span>{" "}
@@ -298,23 +299,25 @@ export function TrafficMap({
   // On one screen (dense) the totals stand in a column beside the map, the map takes the panel's height,
   // and the legend and region list give way: each dot's details card and pill carry the same figures.
   return (
-    <div className="dense:flex dense:h-full dense:min-h-0 dense:gap-4">
-      <div className="hidden dense:flex dense:shrink-0 dense:flex-col dense:justify-between">
+    <div className="dense:flex dense:h-full dense:min-h-0 dense:flex-1 dense:gap-3">
+      <div className="hidden dense:flex dense:shrink-0 dense:flex-col dense:justify-between dense:gap-1.5">
         {stats}
-        <ul className="hidden space-y-1.5 rounded-md border border-rule bg-surface px-3 py-2 text-xs text-ink2 dense:block" aria-label="Traffic map legend">
-          <li className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-sev-critical" aria-hidden /> Critical
+        <ul className="hidden space-y-1 rounded-md border border-rule bg-surface px-2.5 py-1.5 text-xs text-ink2 dense:block" aria-label="Traffic map legend">
+          <li className="grid grid-cols-2 gap-x-2.5 gap-y-0.5 pb-1">
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-sev-critical" aria-hidden /> Crit
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-sev-high" aria-hidden /> High
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-sev-moderate" aria-hidden /> Mod
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-sev-low" aria-hidden /> Low
+            </span>
           </li>
-          <li className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-sev-high" aria-hidden /> High
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-sev-moderate" aria-hidden /> Moderate
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-sev-low" aria-hidden /> Low
-          </li>
-          <li className="flex items-center gap-1.5 border-t border-rule pt-1.5">
+          <li className="flex items-center gap-1.5 border-t border-rule pt-1">
             <span className="h-0.5 w-3.5 rounded-full bg-sev-critical" aria-hidden /> Outbound
           </li>
           <li className="flex items-center gap-1.5">
@@ -325,9 +328,10 @@ export function TrafficMap({
           </li>
         </ul>
       </div>
-      <div className="relative rounded-lg border border-rule bg-ground p-2 dense:flex dense:min-h-0 dense:min-w-0 dense:flex-1 dense:items-center">
+      <div className="relative rounded-lg border border-rule bg-ground p-2 dense:min-h-0 dense:min-w-0 dense:flex-1 dense:p-0">
+        <div className="dense:map-stage-fit dense:absolute dense:inset-0 dense:flex dense:items-center dense:justify-center dense:px-5 dense:py-4">
         {/* Tight aspect-matched box around the SVG so percentage-positioned badges and hit targets align with SVG coordinates. */}
-        <div className="relative mx-auto w-full">
+        <div className="relative mx-auto w-full dense:map-canvas-fit">
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block w-full overflow-visible"
@@ -527,10 +531,7 @@ export function TrafficMap({
           return (
             <span
               key={f.id}
-              onPointerEnter={(e) => e.pointerType === "mouse" && showTip(f.id)}
-              onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
-              onClick={() => showTip(f.id)}
-              className={`cursor-pointer absolute ${posClass}`}
+              className={`pointer-events-none absolute ${posClass}`}
               style={{ left: `${leftPct}%`, top: `${topPct}%` }}
             >
               {/* Region name, severity dot, and outbound volume right on the badge for instant scanning. */}
@@ -645,6 +646,7 @@ export function TrafficMap({
               {f.ips.length > TIP_IPS && <p className="mt-0.5 font-mono text-muted">+{f.ips.length - TIP_IPS} more, listed below the map</p>}
             </DotDetails>
           ))}
+        </div>
         </div>
       </div>
 
