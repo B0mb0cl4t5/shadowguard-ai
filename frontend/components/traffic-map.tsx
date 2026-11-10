@@ -208,6 +208,7 @@ export function TrafficMap({
   const [active, setActive] = useState<DataLocation | null>(null);
   // The dot whose details card is open: on hover, tap or keyboard focus, never hover alone.
   const [tip, setTip] = useState<DataLocation | "campus" | null>(null);
+  const [pinned, setPinned] = useState<DataLocation | "campus" | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flows = useMemo<Flow[]>(() => {
@@ -241,18 +242,29 @@ export function TrafficMap({
     }
   };
 
-  const showTip = (id: DataLocation | "campus") => {
+  const showTip = (id: DataLocation | "campus", lock = false) => {
     clearCloseTimer();
     setTip(id);
     setActive(id === "campus" ? null : id);
+    if (lock) {
+      setPinned(id);
+    }
   };
 
-  const hideTip = () => {
+  const hideTip = (force = false) => {
+    if (pinned && !force) return;
     clearCloseTimer();
     closeTimer.current = setTimeout(() => {
       setTip(null);
       setActive(null);
-    }, 120);
+    }, 150);
+  };
+
+  const dismiss = () => {
+    clearCloseTimer();
+    setPinned(null);
+    setTip(null);
+    setActive(null);
   };
 
   useEffect(() => () => clearCloseTimer(), []);
@@ -424,7 +436,14 @@ export function TrafficMap({
             const r = size(f);
             const selected = active === f.id || tip === f.id;
             return (
-              <g key={f.id} style={{ opacity: dim(f) }} className="transition-opacity">
+              <g
+                key={f.id}
+                style={{ opacity: dim(f) }}
+                className="cursor-pointer transition-opacity"
+                onClick={() => showTip(f.id, true)}
+                onMouseEnter={() => showTip(f.id)}
+                onMouseLeave={() => hideTip()}
+              >
                 {f.unstated && (
                   <circle
                     cx={x}
@@ -442,7 +461,7 @@ export function TrafficMap({
                     cy={y}
                     r={r + 5}
                     fill="none"
-                    style={{ stroke: SEVERITY_STYLE[f.worst].stroke }}
+                    style={{ stroke: "var(--accent)" }}
                     strokeWidth="2"
                   />
                 )}
@@ -498,15 +517,41 @@ export function TrafficMap({
               vectorEffect="non-scaling-stroke"
             />
           )}
-          <circle cx={HOME[0]} cy={HOME[1]} r="9" style={{ fill: "var(--surface)", stroke: "var(--accent)" }} strokeWidth="2.5" />
-          <circle cx={HOME[0]} cy={HOME[1]} r="4" style={{ fill: "var(--accent)" }} />
+          <g
+            className="cursor-pointer"
+            onClick={() => showTip("campus", true)}
+            onMouseEnter={() => showTip("campus")}
+            onMouseLeave={() => hideTip()}
+          >
+            {tip === "campus" && (
+              <circle
+                cx={HOME[0]}
+                cy={HOME[1]}
+                r="14"
+                fill="none"
+                style={{ stroke: "var(--accent)" }}
+                strokeWidth="2"
+              />
+            )}
+            <circle cx={HOME[0]} cy={HOME[1]} r="9" style={{ fill: "var(--surface)", stroke: "var(--accent)" }} strokeWidth="2.5" />
+            <circle cx={HOME[0]} cy={HOME[1]} r="4" style={{ fill: "var(--accent)" }} />
+          </g>
         </svg>
 
         <span
-          className="pointer-events-none absolute -translate-x-full -translate-y-1/2 pr-3"
+          className="absolute -translate-x-full -translate-y-1/2 pr-3 cursor-pointer"
           style={{ left: `${(HOME[0] / W) * 100}%`, top: `${(HOME[1] / H) * 100}%` }}
+          onClick={() => showTip("campus", true)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && showTip("campus", true)}
+          aria-label="Investigate Campus Anchor"
         >
-          <span className="flex items-center gap-1.5 whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-accent">
+          <span
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium text-accent transition-colors ${
+              tip === "campus" ? "border-accent bg-raised ring-1 ring-accent" : "border-control bg-surface"
+            }`}
+          >
             <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
             Campus
           </span>
@@ -539,14 +584,18 @@ export function TrafficMap({
                 if (tip === f.id) hideTip();
                 else setActive(null);
               }}
-              onClick={() => showTip(f.id)}
+              onClick={() => showTip(f.id, true)}
               className={`absolute cursor-pointer ${posClass}`}
               style={{ left: `${leftPct}%`, top: `${topPct}%` }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && showTip(f.id, true)}
+              aria-label={`Investigate ${f.label} (${formatBytes(f.bytes)})`}
             >
               {/* Region name, severity dot, and outbound volume right on the badge for instant scanning. */}
               <span
                 className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium text-ink transition-colors ${
-                  active === f.id || tip === f.id ? "border-accent bg-raised" : "border-control bg-surface"
+                  active === f.id || tip === f.id ? "border-accent bg-raised ring-1 ring-accent" : "border-control bg-surface"
                 }`}
               >
                 <span className={`h-2 w-2 shrink-0 rounded-full ${SEVERITY_STYLE[f.worst].mark}`} aria-hidden />
@@ -574,85 +623,138 @@ export function TrafficMap({
           <Button
             key={dot.id}
             variant="bare"
-            className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:ring-2 focus-visible:ring-accent [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+            className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:ring-2 focus-visible:ring-accent [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 cursor-pointer"
             style={{ left: `${(dot.at[0] / W) * 100}%`, top: `${(dot.at[1] / H) * 100}%` }}
-            aria-label={`${dot.label}. Show details`}
+            aria-label={`${dot.label}. Click to investigate`}
             aria-describedby={tip === dot.id ? "map-dot-details" : undefined}
             onPointerEnter={(e) => e.pointerType === "mouse" && showTip(dot.id)}
             onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
             onFocus={() => showTip(dot.id)}
-            onBlur={hideTip}
-            onClick={() => showTip(dot.id)}
-            onKeyDown={(e) => e.key === "Escape" && hideTip()}
+            onBlur={() => hideTip()}
+            onClick={() => showTip(dot.id, true)}
+            onKeyDown={(e) => e.key === "Escape" && dismiss()}
           />
         ))}
         {tip === "campus" && (
-          <DotDetails at={HOME} onKeepOpen={() => showTip("campus")} onLeave={hideTip}>
-            <p className="text-sm font-medium text-accent">Campus (Kuala Lumpur)</p>
-            <p className="mt-0.5 text-ink2">Where all traffic to these tools starts.</p>
-            <p className="mt-2 text-ink2">
-              <span className="font-mono text-ink">{formatBytes(total)}</span> out, <span className="font-mono text-ink">{formatBytes(totalIn)}</span> in
-              {lastMinute && (
-                <>
-                  , <span className="font-mono text-ink">{lastMinute.events}</span> {lastMinute.events === 1 ? "event" : "events"} in the last minute
-                </>
+          <DotDetails at={HOME} onKeepOpen={() => showTip("campus")} onLeave={() => hideTip()}>
+            <div className="flex items-start justify-between gap-2 border-b border-rule pb-2">
+              <div>
+                <p className="text-sm font-semibold text-accent">Campus Anchor (Kuala Lumpur)</p>
+                <p className="mt-0.5 text-xs text-muted">University network egress gateway</p>
+              </div>
+              {pinned === "campus" && (
+                <Button variant="ghost" size="icon" onClick={dismiss} aria-label="Close investigation" className="h-6 w-6 text-muted hover:text-ink">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </Button>
               )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 py-2 border-b border-rule font-mono text-xs">
+              <div className="rounded bg-raised p-1.5">
+                <span className="block text-muted text-xs font-sans">Total Sent</span>
+                <span className="font-semibold text-ink">{formatBytes(total)}</span>
+              </div>
+              <div className="rounded bg-raised p-1.5">
+                <span className="block text-muted text-xs font-sans">Total Received</span>
+                <span className="font-semibold text-ink">{formatBytes(totalIn)}</span>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-ink2">
+              All monitored traffic to unapproved tools originates here.
+              {lastMinute && <> <span className="font-mono text-ink font-semibold">{lastMinute.events}</span> live events in last 60s.</>}
             </p>
-            <p className="mt-2 text-muted">Staff addresses aren&apos;t collected.</p>
+            <p className="mt-1 text-xs text-muted">Zero staff PII or message contents collected.</p>
           </DotDetails>
         )}
         {flows
           .filter((f) => f.id === tip)
           .map((f) => (
-            <DotDetails key={f.id} at={f.at} onKeepOpen={() => showTip(f.id)} onLeave={hideTip}>
-              <p className="flex items-baseline justify-between gap-3">
-                <span className="text-sm font-medium text-ink">{f.label}</span>
-                <span className={SEVERITY_STYLE[f.worst].text}>
-                  {SEVERITY_LABEL[f.worst]} <span className="font-mono">{f.score}</span>
-                </span>
-              </p>
-              <p className="mt-0.5 text-ink2">
-                <span className="font-mono text-ink">{formatBytes(f.bytes)}</span> out,{" "}
-                {f.bytesIn > 0 ? (
-                  <>
-                    <span className="font-mono text-ink">{formatBytes(f.bytesIn)}</span> in
-                  </>
-                ) : (
-                  "in not reported"
-                )}
-              </p>
-              <p className="mt-2 text-muted">{f.apps.length === 1 ? "Tool (select to inspect)" : "Tools (select to inspect)"}</p>
-              <div className="mt-0.5 flex flex-wrap gap-1.5">
-                {f.apps.map((a) => (
-                  <Button
-                    key={a.id}
-                    variant="bare"
-                    onClick={() => {
-                      setTip(null);
-                      setActive(null);
-                      onOpen(a);
-                    }}
-                    className="rounded border border-control bg-raised px-1.5 py-0.5 text-xs font-medium text-ink transition-colors hover:bg-raised-hover"
-                  >
-                    {a.name}
-                  </Button>
-                ))}
+            <DotDetails key={f.id} at={f.at} onKeepOpen={() => showTip(f.id)} onLeave={() => hideTip()}>
+              <div className="flex items-start justify-between gap-2 border-b border-rule pb-2">
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${SEVERITY_STYLE[f.worst].mark}`} aria-hidden />
+                    {f.label}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {f.unstated ? "Vendor policy hides storage region" : `Stated data residency: ${f.shortLabel}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={SEVERITY_STYLE[f.worst].text}>
+                    {SEVERITY_LABEL[f.worst]} <span className="font-mono">{f.score}</span>
+                  </span>
+                  {pinned === f.id && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={dismiss}
+                      aria-label="Close region investigation"
+                      className="h-6 w-6 text-muted hover:text-ink"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </Button>
+                  )}
+                </div>
               </div>
-              <p className="mt-2 text-muted">Destination IPs, the vendor&apos;s own</p>
-              {f.ips.length === 0 ? (
-                <p className="text-ink2">Not reported</p>
-              ) : (
-                <ul className="mt-0.5 space-y-px font-mono">
-                  {f.ips.slice(0, TIP_IPS).map((d) => (
-                    <li key={d.ip} className="grid grid-cols-[1fr_auto_auto] gap-x-2">
-                      <span className="text-ink">{d.ip}</span>
-                      <span className="text-right text-ink2">{formatBytes(d.bytes_out)} out</span>
-                      <span className="text-right text-muted">{formatBytes(d.bytes_in)} in</span>
-                    </li>
+
+              <div className="grid grid-cols-2 gap-2 py-2 border-b border-rule font-mono text-xs">
+                <div className="rounded bg-raised p-1.5">
+                  <span className="block text-muted text-xs font-sans">Outbound sent</span>
+                  <span className="font-semibold text-ink">{formatBytes(f.bytes)}</span>
+                </div>
+                <div className="rounded bg-raised p-1.5">
+                  <span className="block text-muted text-xs font-sans">Inbound received</span>
+                  <span className="font-semibold text-ink">{f.bytesIn > 0 ? formatBytes(f.bytesIn) : "Not reported"}</span>
+                </div>
+              </div>
+
+              <div className="py-2 border-b border-rule">
+                <p className="text-xs font-medium text-ink2 mb-1.5">
+                  {f.apps.length === 1 ? "1 Active Tool (select to inspect):" : `${f.apps.length} Active Tools (select to inspect):`}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {f.apps.map((a) => (
+                    <Button
+                      key={a.id}
+                      variant="bare"
+                      onClick={() => {
+                        dismiss();
+                        onOpen(a);
+                      }}
+                      className="flex items-center gap-1.5 rounded border border-control bg-raised px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:bg-raised-hover"
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${SEVERITY_STYLE[a.severity].mark}`} aria-hidden />
+                      <span>{a.name}</span>
+                    </Button>
                   ))}
-                </ul>
-              )}
-              {f.ips.length > TIP_IPS && <p className="mt-0.5 font-mono text-muted">+{f.ips.length - TIP_IPS} more, listed below the map</p>}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-xs text-muted mb-1">Destination IPs (vendor&apos;s own)</p>
+                {f.ips.length === 0 ? (
+                  <p className="text-xs text-ink2">Not reported</p>
+                ) : (
+                  <ul className="space-y-1 font-mono text-xs">
+                    {f.ips.slice(0, TIP_IPS).map((d) => (
+                      <li key={d.ip} className="flex items-center justify-between gap-2 rounded bg-raised px-1.5 py-0.5">
+                        <span className="text-ink font-medium">{d.ip}</span>
+                        <div className="flex gap-2 text-ink2 text-xs">
+                          <span>{formatBytes(d.bytes_out)} out</span>
+                          <span className="text-muted">{formatBytes(d.bytes_in)} in</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {f.ips.length > TIP_IPS && (
+                  <p className="mt-1 font-mono text-xs text-muted">+{f.ips.length - TIP_IPS} more, listed below the map</p>
+                )}
+              </div>
             </DotDetails>
           ))}
         </div>
