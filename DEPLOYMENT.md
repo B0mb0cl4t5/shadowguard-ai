@@ -150,7 +150,7 @@ SHADOWGUARD_INGEST_KEY=<raw ingest key> \
 python backend/scripts/simulate_live.py --surge paperpilot.ai --interval 8
 ```
 
-The dashboard polls every 15 seconds; watch the exams office climb to Critical and a block proposal appear.
+The live feed polls every 4 seconds and the full dashboard follows within about 8 seconds of new traffic; watch the exams office climb to Critical and a block proposal appear.
 
 To reset the demo before going on stage, re-run `python backend/scripts/init_db.py`.
 

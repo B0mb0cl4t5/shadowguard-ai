@@ -299,3 +299,10 @@ test("one-screen lists show whole rows and never scroll the page sideways", () =
   assert.ok(lists.length >= 5, "the one-screen lists clip whole rows");
   assert.deepEqual(lists.filter(({ c }) => !c.includes("dense:relative")).map(({ name }) => name), []);
 });
+
+test("simulate route payload matches the backend TelemetryEvent schema", () => {
+  const simulateRoute = readFileSync(join(frontend, "app", "api", "simulate", "route.ts"), "utf8");
+  assert.match(simulateRoute, /\bbytes_out:/);
+  assert.match(simulateRoute, /\bbytes_in:/);
+  assert.doesNotMatch(simulateRoute, /\bbytes_up\b|\bbytes_down\b/);
+});

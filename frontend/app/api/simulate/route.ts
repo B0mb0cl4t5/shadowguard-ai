@@ -22,16 +22,16 @@ const BURST_TEMPLATES = [
     maxUp: 880_000,
   },
   {
-    domain: "summarix.ai",
-    department: "Student Affairs",
-    dest_ip: "203.0.113.211",
+    domain: "deckgenie.app",
+    department: "Marketing & Events",
+    dest_ip: "203.0.113.26",
     minUp: 95_000,
     maxUp: 340_000,
   },
   {
-    domain: "transcribefly.com",
-    department: "Human Resources",
-    dest_ip: "203.0.113.44",
+    domain: "codemuse.dev",
+    department: "IT Services",
+    dest_ip: "203.0.113.143",
     minUp: 410_000,
     maxUp: 1_250_000,
   },
@@ -64,15 +64,16 @@ export async function POST(request: Request) {
 
   const nowMs = Date.now();
   const events = BURST_TEMPLATES.map((tpl, idx) => {
-    const bytesUp = randomInt(tpl.minUp, tpl.maxUp);
-    const bytesDown = Math.round(bytesUp * (0.28 + Math.random() * 0.45));
+    const bytesOut = randomInt(tpl.minUp, tpl.maxUp);
+    const bytesIn = Math.round(bytesOut * (0.28 + Math.random() * 0.45));
     return {
       domain: tpl.domain,
       user_hash: randomBytes(32).toString("hex"),
       department: tpl.department,
-      bytes_up: bytesUp,
-      bytes_down: bytesDown,
+      bytes_out: bytesOut,
+      bytes_in: bytesIn,
       dest_ip: tpl.dest_ip,
+      source: "proxy" as const,
       observed_at: new Date(nowMs - idx * 800).toISOString(),
     };
   });

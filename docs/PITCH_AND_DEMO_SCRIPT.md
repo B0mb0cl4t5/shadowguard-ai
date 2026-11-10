@@ -1,44 +1,108 @@
-# ShadowGuard AI — 10-Minute Presentation Deck & 2-Minute Demo Script
+# ShadowGuard AI: pitch and demo guide
 
-Companion presenter guide for [`docs/ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx).
+Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), with a PDF copy in [`ShadowGuard_Overview.pdf`](./ShadowGuard_Overview.pdf). Each slide's speaker notes hold the full talk track and its timing; this page is the run sheet, the demo script, and where every figure comes from.
 
-- **Live Demo URL:** `https://shadowguard-ai-bice.vercel.app`
-- **Repository:** `https://github.com/ongzixuan456/shadowguard-ai`
-
----
-
-## 1 · Presentation Structure (10 Minutes · 12 Slides)
-
-| Time | Slide | Section | Core Message | What Is Shown on Screen (`ShadowGuard_Overview.pptx`) |
-|---|---|---|---|---|
-| **0:00–0:30** | **Slide 1** | **Title** | *“ShadowGuard AI – University-wide AI-tool governance”* | Shield identity card, tagline, presenter callout, 4 governance pillars, and GDG Problem Statement 02 card |
-| **0:30–1:00** | **Slide 2** | **Problem (1 / 2) — The Hidden Policy Trap** | Staff use unapproved free AI tools; vendor policies are hidden or silently rewritten → severe data-leak & Malaysian PDPA breach risk | 3-step visual scenario (`Lecturer uploads class essays → GradeSync Pro silently flips model training & SG→US transfer → Critical 93 exposure`) + word-level policy diff screenshot |
-| **1:00–1:30** | **Slide 3** | **Problem (2 / 2) — Unmanaged Scale** | Manual vetting is impossible at campus scale; blanket firewall bans backfire | Hero stat callout (**“30% of staff use 12+ unapproved AI tools”** across 10 university departments) + Department Exposure Heatmap screenshot |
-| **1:30–2:30** | **Slide 4** | **Solution Overview** | One-stop dashboard that **discovers, reads, scores & nudges** | High-level 3-tier architecture diagram (`Collectors [Squid / FortiGate / Laptop Proxy] → Backend [FastAPI Risk & Quote-Verified IDP Engine + Neon Postgres] → Frontend [Next.js 15 Real-Time UI]`) |
-| **2:30–4:30** | **Slide 5** | **Live Demo (≈ 2 min)** | Show the UI in action — the moment that makes the product “real” | Full 12-step time-coded **Demo Video Script (`0.0s–120s`)** table with voice-over cues alongside the live dashboard screenshot |
-| **4:30–5:00** | **Slide 6** | **How It Works (1 / 2) — Discover & Read** | • **Discover** – DNS/proxy metadata log parsing (`shadowguard_collector.py`, `campus_log_shipper.py`)<br>• **Read** – Policy extraction (deterministic rules + Gemini 2.5 Flash cross-check, verbatim quote verification & prompt-injection trap) | 5-node pipeline flowchart from `README.md` + technical deep dive + Live Policy Test screenshot |
-| **5:00–5:30** | **Slide 7** | **How It Works (2 / 2) — Score & Respond** | • **Score** – Transparent `0–100` rubric (`Posture × Sensitivity × Usage`)<br>• **Respond** – Rate-limited Teams nudge, deduplicated IT ticket, human-approved block proposal & firewall/CSV exports | Full scoring formula card + human-in-the-loop response card + Command Palette (`⌘K`) screenshot |
-| **5:30–6:30** | **Slide 8** | **Security & Compliance** | Zero-UI-dependency supply chain (`only Next.js, React & server-only`), WCAG 2.1 AA accessibility, OWASP Top 10 & Malaysian PDPA (Act 709) statutory mapping | Verbatim quote from [`SECURITY.md`](../SECURITY.md) + 4 compliance badges + Malaysian PDPA Sections 8, 9, 10 & 129 statutory matrix + Vendor Drawer screenshot |
-| **6:30–7:30** | **Slide 9** | **Performance & Scalability** | Real-time updates every `4 s` (`live.beat`), `< 200 ms` latency, server-side rendering, `240 / 600 rpm` rate budgets, `90-day` retention & `db.after_commit` webhooks | 6 metric cards with exact operational numbers from [`DEPLOYMENT.md`](../DEPLOYMENT.md) and [`SECURITY.md`](../SECURITY.md) |
-| **7:30–8:30** | **Slide 10** | **Deployment & Ops** | One-click Vercel Services multi-service deploy (`vercel.json`), Neon Postgres (`sslmode=require`, least-privilege SQL role), and GitHub Actions CI/CD | Vercel Services + CI/CD gate summary (`73/73` frontend & design-contract tests, `168/168` backend & PostgreSQL tests, `0` audit vulnerabilities) + Tools Exposure screenshot |
-| **8:30–9:30** | **Slide 11** | **Roadmap / Future** | • **Phase 1 (Now):** Complete campus governance core<br>• **Phase 2 (Next):** Multi-tenant university SaaS & custom policy templates<br>• **Phase 3 (Future):** AI-generated remediation playbooks & direct firewall/SIEM socket push | 3-horizon visual timeline graphic |
-| **9:30–10:00** | **Slide 12** | **Q&A / Call-to-Action** | *“Try the live demo at `shadowguard-ai-bice.vercel.app`”* | Live URL, GitHub repository link, interactive checklist, sign-in & light-theme screenshots |
+- **Live demo:** https://shadowguard-ai-bice.vercel.app
+- **Repository:** https://github.com/ongzixuan456/shadowguard-ai
+- **Event:** APU Cloud Innovation Hackathon 2026, Problem statement 02 (Intelligent automation and digital transformation)
+- **Format:** 10 minutes, 12 slides, 16:9. The fonts are embedded, so the deck looks the same on the venue PC.
 
 ---
 
-## 2 · Demo Video Script (≈ 2 Minutes · `0.0s – 120s`)
+## Before you present
 
-| Step | Action (on screen) | Duration | Voice-over cue |
+1. **Sign in as an admin.** *Simulate burst* and the *Review* button only appear for admins. For a recording, setting `DEMO_SIGN_IN=admin` on Vercel adds a one-click *Open the demo* button. Anyone with the link can then sign in, so delete it and redeploy straight after (see [`DEPLOYMENT.md`](../DEPLOYMENT.md)).
+2. **Use a window at least 1280 × 740 at 100% zoom,** so *Fit to screen* holds the whole Overview without scrolling.
+3. **Have a block proposal waiting.** The *Remediation and reviews* tab should show a pending count. If it doesn't, run the surge from the live-demo section of `DEPLOYMENT.md` (`simulate_live.py --surge`) and wait for a department to reach Critical.
+4. **Check how policies are read on the live site.** Slides 4 and 6 say "Rules + Gemini". Until `GEMINI_API_KEY` is set on Vercel, the live site reads policies with the rules alone. Either set the key or say "rules, and Gemini when a key is set", as the speaker notes do.
+5. **Keep the survey source to hand.** Slide 3 quotes Microsoft and LinkedIn's [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/).
+
+---
+
+## 1. Run sheet (10 minutes, 12 slides)
+
+| Time | Slide | Title on the slide | The point to land |
 |---|---|---|---|
-| **0.0–0.5s** | Open browser to the **Live demo URL** (`https://shadowguard-ai-bice.vercel.app`) – show address bar | `0.5s` | *“Here’s the live preview we host on Vercel.”* |
-| **0.5–5s** | **Dashboard Overview** – the one-screen view (map, severity bars, top-tools panel). Highlight the sticky tab bar | `4.5s` | *“The dashboard fits on a single screen – notice the sticky tab bar stays while you scroll.”* |
-| **5–10s** | Hover a **region pill** (e.g., `US 99.6 MB`) – a ring highlights the region on the map and the badge border highlights | `5s` | *“Hovering a region instantly highlights its traffic on the map.”* |
-| **10–20s** | Click a **region pill** → **dot details card** appears with tooltip information | `10s` | *“Click to open a tooltip that shows the exact volume, risk score, and top tools.”* |
-| **20–30s** | Click a **tool name** inside the tooltip → the **Vendor drawer** slides in | `10s` | *“From the card we can drill into a tool’s policy details.”* |
-| **30–45s** | In the drawer, click **“Fetch the latest policy”** (or run a live policy check). Show the progress state and verified policy clauses + Malaysian PDPA statutory checks | `15s` | *“Policies are fetched on-demand; the UI shows a progress indicator and every verified quote.”* |
-| **45–55s** | Switch to the **“Tool exposure”** tab (top sticky tab) – the Tools table appears. Sort by severity (click column header) | `10s` | *“The Tools tab lets you sort and filter all apps; the table is fully keyboard-accessible.”* |
-| **55–65s** | Click **“View all”** from Overview (or inspect the **Risk Map** inside Tool exposure) → select a tool to highlight its position | `10s` | *“From the overview you can jump to a full view of all tools and their risk maps.”* |
-| **65–80s** | Click **“Simulate burst”** button (top-right header). Observe the **traffic-map animation** (three new packet arcs and landing ripples) | `15s` | *“The ‘Simulate burst’ button instantly produces traffic; you see the animated arcs and ripple effect we built for live visual feedback.”* |
-| **80–95s** | Look at / scroll down to the **Live traffic** table – new rows appear automatically (real-time updates every `4 s`) | `15s` | *“Live traffic is refreshed every 4 seconds – the table updates without a page reload.”* |
-| **95–110s** | Switch to **Remediation and reviews** (or press `⌘K` / `Ctrl+K`) and click **“Export PDPA CSV”** → a CSV download (`shadowguard-pdpa-audit.csv`) starts | `15s` | *“Exporting the audit CSV is one click away for compliance reporting.”* |
-| **110–120s** | End on the **Dashboard** with the sticky tab bar still visible | `10s` | *“That’s the full end-to-end flow – discovery, policy read, scoring, and response, all in a single UI.”* |
+| 0:00–0:30 | 1 · Cover | ShadowGuard AI: Governing shadow AI across the university | Our answer to Problem statement 02. It covers two of the example use cases: IT operations automation (finds tools, files tickets) and intelligent document processing (reads and quotes policies). |
+| 0:30–1:00 | 2 · The problem | A free AI grader rewrote its privacy policy, and nobody noticed | GradeSync Pro rewrote its policy to train on student work, keep it 3 years in the US and share it. Exposure went from Low 12 to Critical 93, touching PDPA s. 9 and s. 129. Say plainly that GradeSync Pro is a fictional demo vendor; the diff and the scores are the pipeline's real output. |
+| 1:00–1:30 | 3 · The problem | Staff bring their own AI faster than IT can vet it | 75% of knowledge workers use AI at work, and 78% of those users bring their own tools. Manual review doesn't scale, blanket bans push staff out of sight, and not every upload carries the same risk. |
+| 1:30–2:30 | 4 · Our solution | One pipeline that discovers, reads, scores and responds | Collect (log shipper and laptop proxy), Analyse (FastAPI on Vercel, Neon Postgres), Act (Next.js 15 dashboard). Metadata only: no TLS decryption, no prompts, no files, and usernames hashed at the source. |
+| 2:30–4:30 | 5 · Live demo | Two minutes, end to end, on the live site | Switch to the browser and follow section 2. |
+| 4:30–5:00 | 6 · How it works | Find the tools, then read their policies with proof | Discover from Squid or FortiGate logs. Read five answers from each policy; an answer that can't quote a whole sentence is dropped, and a disagreement or hidden instruction marks the vendor Unverified. |
+| 5:00–5:30 | 7 · How it works | Score the exposure, then let a person decide | Exposure = posture × sensitivity × usage. Bands: Low under 30, Moderate 30+, High 50+, Critical 70+. High or Critical files a ticket and a Teams nudge; Critical queues a block proposal. Nothing is blocked automatically. |
+| 5:30–6:30 | 8 · Security and compliance | Built as a security product first | Small supply chain, OWASP Top 10 mapped in `SECURITY.md`, PDPA (Act 709) sections 8, 9, 10 and 129 per vendor, and full keyboard and screen-reader paths. |
+| 6:30–7:30 | 9 · Performance | Fast enough to watch the network live | Live feed every 4 s, full summary every 8 s while traffic arrives, 0.2–0.5 s reads, 240 reads a minute per client, 90 days of raw telemetry, Teams nudges only after the commit. |
+| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 73 frontend tests and 167 backend tests, plus npm audit and pip-audit. |
+| 8:30–9:30 | 11 · Roadmap | From one campus to every university | Now: what is live. Next: MCP server for Gemini Enterprise, firewall push, single sign-on, per-university weights. Later: in-browser coaching, SIEM sync, multi-campus workspaces. |
+| 9:30–10:00 | 12 · Close | Try ShadowGuard live | Live URL, repository and QR code. Take questions. |
+
+---
+
+## 2. Demo script (2 minutes)
+
+Start signed in as an admin on the Overview, with *Fit to screen* on.
+
+| Time | Do this | Say this |
+|---|---|---|
+| 0:00–0:05 | Open https://shadowguard-ai-bice.vercel.app with the address bar visible. | "This is the live site on Vercel." |
+| 0:05–0:15 | Show the Overview in *Fit to screen*. | "Every block fits one screen: the traffic map, live traffic, block proposals, the 14-day trend, severity, departments and the most exposed tools." |
+| 0:15–0:30 | Hover, then click a region on the traffic map. | "Each region shows the real bytes out and in, and which tools sent them." |
+| 0:30–0:55 | Click a tool name to open the vendor drawer. Optionally press *Fetch the latest policy*. | "Every answer about this vendor quotes its own policy. Here are the PDPA checks, and the diff from when GradeSync rewrote its policy." |
+| 0:55–1:10 | Open the *Tool exposure* tab and sort by severity. | "The full list, sortable, with the departments affected." |
+| 1:10–1:30 | Click *Simulate burst* in the header. | "New telemetry arrives. Each event travels an arc on the map and lands in Live traffic within seconds." |
+| 1:30–1:50 | Open *Remediation and reviews*, press *Review* on a proposal to show the dialog, then close it with *Cancel*. In the export panel, pick *FortiGate CLI* or *Squid ACL* and press *Download rule*. | "Nothing is blocked until an admin approves it here, and the approved list exports straight to the firewall." |
+| 1:50–2:00 | Go back to the Overview. | "Discover, read, score, respond, in one place." |
+
+Leave the proposal undecided in the demo. Approving or dismissing it is recorded in the audit log and can't be undone, and it takes the proposal out of the queue for the next run.
+
+---
+
+## 3. Where the figures come from
+
+| Figure | Value | Source |
+|---|---|---|
+| Severity bands | Low under 30, Moderate 30+, High 50+, Critical 70+ | `SEVERITY_THRESHOLDS` in `backend/shadowguard/scoring.py` |
+| Vendor posture | Up to 35 for training on inputs, 20 retention, 20 sharing, 15 no opt-out, 10 location | `vendor_posture` in `backend/shadowguard/scoring.py` |
+| Unverified floor | Never below 50 | `UNVERIFIED_FLOOR` in `backend/shadowguard/scoring.py` |
+| Sensitivity | 0.30 to 1.0 per department | `database/schema.sql` (departments check constraint) and `exposure` in `scoring.py` |
+| Usage | 0.6 to 1.0, log scale, full at 50 distinct users | `usage_factor` and `USAGE_SATURATION_USERS` in `scoring.py` |
+| Nudge and block limits | One nudge per department and tool per 24 h; a rejected block stays quiet for 7 days | `NUDGE_COOLDOWN` and `REJECTION_QUIET_PERIOD` in `backend/shadowguard/pipeline.py` |
+| Live feed | Every 4 s while the tab is visible | `LIVE_MS` in `frontend/components/dashboard-shell.tsx` |
+| Full summary | Every 8 s while new traffic arrives, otherwise every 60 s | `REFETCH_GAP_MS` and `FULL_REFRESH_MS` in `dashboard-shell.tsx` |
+| Request deadlines | 10 s polls, 15 s requests, 30 s policy reads | `TIMEOUT_MS` in `frontend/lib/request-timeout.ts` |
+| Read and write budget | 240 reads and 20 writes a minute per client | `BUDGET` in `frontend/lib/request-guard.ts` |
+| Statement timeout | 15 s per database transaction | `set_statement_timeout` in `backend/shadowguard/repository.py` |
+| Raw telemetry kept | 90 days | `telemetry_retention_days` in `backend/shadowguard/config.py`; pruned by `backend/scripts/prune_telemetry.py` |
+| Dashboard reads | About 0.2 to 0.5 s | Measured on 5 November 2026, after moving the functions from iad1 to sin1 next to the Neon database |
+| Gemini model | `gemini-2.5-flash` | `DEFAULT_MODEL` in `backend/shadowguard/gemini.py` |
+| Tests | 73 frontend; 167 backend, 19 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend pytest suite. Run locally on 10 November 2026: 73 of 73 frontend pass; 148 backend pass and the 19 database tests skip without a test database |
+| Survey figures | 75% of knowledge workers use AI at work; 78% of AI users bring their own tools | Microsoft and LinkedIn, [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/), 31,000 people in 31 countries |
+
+---
+
+## 4. Questions to expect
+
+**Does it sit on the network?** No. ShadowGuard works at the application layer and out of band. It reads connection metadata that the campus proxy or firewall already logs, so it never sits in the traffic path and can't slow or break anything. Blocking happens on the firewall, from the rules ShadowGuard exports after an admin approves them.
+
+**Do you read prompts or files?** No. It sees the hostname, byte counts, the time, a salted hash of the username, and the department. There is no TLS decryption.
+
+**What if Gemini makes something up?** Every answer must quote a whole sentence from the policy word for word, or it is dropped. The rules and Gemini read the policy separately. If they disagree, or the page hides instructions aimed at an AI reader, the vendor is marked Unverified and scored at least 50 (High).
+
+**Why not block automatically?** A wrong block cuts staff off in the middle of their work, so the decision stays with a person. The review dialog opens with focus on *Cancel*, and a block counts only after the server confirms it.
+
+**How does it know the department?** The log shipper looks up each username in the staff directory, then hashes the username with a secret salt before anything leaves campus (`collector/campus_log_shipper.py`).
+
+**Is GradeSync Pro real?** No. It's a fictional demo vendor. The policy diff and the scores on slide 2 are what the real pipeline produced from its two policy texts.
+
+---
+
+## 5. Changes from the earlier deck
+
+If you rehearsed the first version of this deck, these figures changed to match the code:
+
+- The bands are High from 50 and Critical from 70 (not 60 and 80), and the formula is posture × sensitivity × usage.
+- "30% of staff use 12+ unapproved AI tools" is gone, because nothing supported it. Slide 3 now uses the Work Trend Index figures above.
+- "Under 200 ms" is now the measured 0.2 to 0.5 s.
+- The backend has 167 tests, not 168.
+- GradeSync Pro is presented as a fictional demo vendor, and the CampusNote AI example is gone.
+- The roadmap has no quarter dates.
