@@ -106,18 +106,21 @@ function usePulses(events: LiveEvent[]): Pulse[] {
 
   useEffect(() => {
     if (events.length === 0) return;
+    const isInitial = seen.current === null;
     if (seen.current === null) {
       seen.current = new Set(events.map((e) => e.id));
-      return;
     }
     const known = seen.current;
-    const fresh = events.filter((e) => !known.has(e.id));
-    fresh.forEach((e) => known.add(e.id));
+    const fresh = isInitial ? events.slice(0, 3) : events.filter((e) => !known.has(e.id));
+    if (!isInitial) {
+      fresh.forEach((e) => known.add(e.id));
+    }
+    const baseDelay = isInitial ? ARRIVE_MS + 150 : 0;
     const batch = fresh
       .slice(0, MAX_PULSES_PER_BATCH)
       .flatMap((e, i): Pulse[] => [
-        ...(e.bytes_out > 0 ? [{ key: `${e.id}-out`, region: e.data_location, direction: "out" as const, delay: i * 500 }] : []),
-        ...(e.bytes_in > 0 ? [{ key: `${e.id}-in`, region: e.data_location, direction: "in" as const, delay: i * 500 + 250 }] : []),
+        ...(e.bytes_out > 0 ? [{ key: `${e.id}-out`, region: e.data_location, direction: "out" as const, delay: baseDelay + i * 450 }] : []),
+        ...(e.bytes_in > 0 ? [{ key: `${e.id}-in`, region: e.data_location, direction: "in" as const, delay: baseDelay + i * 450 + 220 }] : []),
       ]);
     if (batch.length === 0) return;
     setPulses((current) => [...current, ...batch]);
@@ -161,6 +164,7 @@ function DotDetails({
     <div
       id="map-dot-details"
       role="tooltip"
+      aria-live="polite"
       onPointerEnter={(e) => e.pointerType === "mouse" && onKeepOpen()}
       onPointerLeave={(e) => e.pointerType === "mouse" && onLeave()}
       className={` absolute inset-x-2 z-20 rounded-md border border-control bg-surface p-3 text-xs sm:right-auto sm:left-[var(--dot-x)] sm:w-72 ${align} ${below ? "" : "-translate-y-full"}`}
@@ -282,15 +286,27 @@ export function TrafficMap({
     <div className="dense:flex dense:h-full dense:min-h-0 dense:gap-4">
       <div className="hidden dense:flex dense:shrink-0 dense:flex-col dense:justify-between">
         {stats}
-        <ul className="hidden space-y-1.5 rounded-md border border-rule bg-surface px-3 py-2 text-xs text-ink2 dense:block">
+        <ul className="hidden space-y-1.5 rounded-md border border-rule bg-surface px-3 py-2 text-xs text-ink2 dense:block" aria-label="Traffic map legend">
           <li className="flex items-center gap-1.5">
-            <span className="h-0.5 w-3.5 rounded-full bg-sev-critical" /> Outbound
+            <span className="h-2 w-2 rounded-full bg-sev-critical" aria-hidden /> Critical
           </li>
           <li className="flex items-center gap-1.5">
-            <span className="h-0.5 w-3.5 border-b border-dashed border-data" /> Inbound
+            <span className="h-2 w-2 rounded-full bg-sev-high" aria-hidden /> High
           </li>
           <li className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-accent" /> Campus
+            <span className="h-2 w-2 rounded-full bg-sev-moderate" aria-hidden /> Moderate
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-sev-low" aria-hidden /> Low
+          </li>
+          <li className="flex items-center gap-1.5 border-t border-rule pt-1.5">
+            <span className="h-0.5 w-3.5 rounded-full bg-sev-critical" aria-hidden /> Outbound
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-0.5 w-3.5 border-b border-dashed border-data" aria-hidden /> Inbound
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-accent" aria-hidden /> Campus
           </li>
         </ul>
       </div>
@@ -387,6 +403,7 @@ export function TrafficMap({
           {flows.map((f, i) => {
             const [x, y] = f.at;
             const r = size(f);
+            const selected = active === f.id || tip === f.id;
             return (
               <g key={f.id} style={{ opacity: dim(f) }} className="transition-opacity">
                 {f.unstated && (
@@ -398,6 +415,16 @@ export function TrafficMap({
                     style={{ stroke: SEVERITY_STYLE[f.worst].stroke }}
                     strokeWidth="1.5"
                     strokeDasharray="3 3"
+                  />
+                )}
+                {selected && (
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={r + 5}
+                    fill="none"
+                    style={{ stroke: SEVERITY_STYLE[f.worst].stroke }}
+                    strokeWidth="2"
                   />
                 )}
                 <circle
@@ -450,11 +477,18 @@ export function TrafficMap({
           return (
             <span
               key={f.id}
-              className={`pointer-events-none absolute ${posClass}`}
+              onPointerEnter={(e) => e.pointerType === "mouse" && showTip(f.id)}
+              onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
+              onClick={() => showTip(f.id)}
+              className={`cursor-pointer absolute ${posClass}`}
               style={{ left: `${leftPct}%`, top: `${topPct}%` }}
             >
               {/* Region name, severity dot, and outbound volume right on the badge for instant scanning. */}
-              <span className="flex items-center gap-1.5 whitespace-nowrap rounded border border-control bg-surface px-1.5 py-0.5 text-xs font-medium text-ink">
+              <span
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium text-ink transition-colors ${
+                  active === f.id || tip === f.id ? "border-accent bg-raised" : "border-control bg-surface"
+                }`}
+              >
                 <span className={`h-2 w-2 shrink-0 rounded-full ${SEVERITY_STYLE[f.worst].mark}`} aria-hidden />
                 <span>{f.shortLabel}</span>
                 <span className="font-mono text-ink2">{formatBytes(f.bytes)}</span>
@@ -465,24 +499,33 @@ export function TrafficMap({
         <div className="absolute bottom-2 left-2 hidden sm:block dense:hidden">{stats}</div>
 
         {/* Each dot opens a details card: a mouse points at it, a finger taps it, the keyboard tabs to it. */}
-        {[{ id: "campus" as const, at: HOME, label: "Campus: where all traffic starts" }, ...flows.map((f) => ({ id: f.id, at: f.at, label: f.label }))].map(
-          (dot) => (
-            <Button
-              key={dot.id}
-              variant="bare"
-              className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
-              style={{ left: `${(dot.at[0] / W) * 100}%`, top: `${(dot.at[1] / H) * 100}%` }}
-              aria-label={`${dot.label}. Show details`}
-              aria-describedby={tip === dot.id ? "map-dot-details" : undefined}
-              onPointerEnter={(e) => e.pointerType === "mouse" && showTip(dot.id)}
-              onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
-              onFocus={() => showTip(dot.id)}
-              onBlur={hideTip}
-              onClick={() => showTip(dot.id)}
-              onKeyDown={(e) => e.key === "Escape" && hideTip()}
-            />
-          ),
-        )}
+        {[
+          {
+            id: "campus" as const,
+            at: HOME,
+            label: `Campus (Kuala Lumpur): ${formatBytes(total)} sent, ${formatBytes(totalIn)} received`,
+          },
+          ...flows.map((f) => ({
+            id: f.id,
+            at: f.at,
+            label: `${f.label}: ${SEVERITY_LABEL[f.worst]} ${f.score}, ${formatBytes(f.bytes)} out, ${formatBytes(f.bytesIn)} in, ${f.apps.length} ${f.apps.length === 1 ? "tool" : "tools"}`,
+          })),
+        ].map((dot) => (
+          <Button
+            key={dot.id}
+            variant="bare"
+            className="absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:ring-2 focus-visible:ring-accent [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+            style={{ left: `${(dot.at[0] / W) * 100}%`, top: `${(dot.at[1] / H) * 100}%` }}
+            aria-label={`${dot.label}. Show details`}
+            aria-describedby={tip === dot.id ? "map-dot-details" : undefined}
+            onPointerEnter={(e) => e.pointerType === "mouse" && showTip(dot.id)}
+            onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
+            onFocus={() => showTip(dot.id)}
+            onBlur={hideTip}
+            onClick={() => showTip(dot.id)}
+            onKeyDown={(e) => e.key === "Escape" && hideTip()}
+          />
+        ))}
         {tip === "campus" && (
           <DotDetails at={HOME} onKeepOpen={() => showTip("campus")} onLeave={hideTip}>
             <p className="text-sm font-medium text-accent">Campus (Kuala Lumpur)</p>
@@ -557,17 +600,29 @@ export function TrafficMap({
 
       <div className="mt-3 sm:hidden">{stats}</div>
 
-      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink2 dense:hidden">
+      <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink2 dense:hidden" aria-label="Traffic map legend">
         <li className="flex items-center gap-1.5">
-          <span className="h-0.5 w-4 rounded-full bg-sev-critical" /> Out, coloured &amp; sized by the region&apos;s severity and volume
+          <span className="h-2 w-2 rounded-full bg-sev-critical" aria-hidden /> Critical
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="h-0.5 w-4 border-b border-dashed border-data" /> In (dashed)
+          <span className="h-2 w-2 rounded-full bg-sev-high" aria-hidden /> High
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-ink2" /> A moving dot is an event arriving now
+          <span className="h-2 w-2 rounded-full bg-sev-moderate" aria-hidden /> Moderate
         </li>
-        <li>Point at or tap a dot to inspect its tools and addresses</li>
+        <li className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-sev-low" aria-hidden /> Low
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 rounded-full bg-sev-critical" aria-hidden /> Outbound (sized by volume)
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 border-b border-dashed border-data" aria-hidden /> Inbound (dashed)
+        </li>
+        <li className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-ink2" aria-hidden /> Moving dot = live event
+        </li>
+        <li>Point at, tap, or Tab to any dot or pill to inspect tools &amp; IPs</li>
       </ul>
 
       <ul className="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2 dense:hidden" onPointerLeave={() => setActive(null)}>
