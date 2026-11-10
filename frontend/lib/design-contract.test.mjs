@@ -169,6 +169,9 @@ test("map dots show their details on hover, tap and keyboard focus, including th
   const map = files.find((f) => f.name === "components/traffic-map.tsx");
   for (const handler of ["onPointerEnter", "onFocus", "onBlur", "onClick"]) assert.match(map.text, new RegExp(`${handler}=`));
   assert.match(map.text, /role="tooltip"/);
+  assert.match(map.text, /aria-live="polite"/);
+  assert.match(map.text, /aria-label="Traffic map legend"/);
+  assert.match(map.text, /campus-beat-/);
   assert.match(map.text, /\.ips\.slice\(0, TIP_IPS\)/);
   assert.doesNotMatch(map.text, /<title>/, "a native title tooltip shows on hover only, after a delay");
 });
