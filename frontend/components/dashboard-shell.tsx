@@ -76,7 +76,11 @@ const LAYOUT_KEY = "shadowguard:overview-layout";
 
 function loadLayout(): OverviewLayout {
   try {
-    return localStorage.getItem(LAYOUT_KEY) === "full" ? "full" : "fit";
+    const saved = localStorage.getItem(LAYOUT_KEY);
+    if (saved === "full" || saved === "fit") return saved;
+    // On smaller laptop screens (under 820px height with toolbars), default to full scroll mode
+    if (typeof window !== "undefined" && window.innerHeight < 820) return "full";
+    return "fit";
   } catch {
     return "fit";
   }
@@ -419,8 +423,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       void pollLive();
       void refresh();
       toast({
-        title: "Simulated live traffic burst",
-        description: `${res.accepted} campus metadata events sent to the live stream.`,
+        title: "Live burst ingested (+5 events)",
+        description: `${res.accepted} events observed in Traffic Map arcs, Live Traffic feed, and Department Heatmap.`,
         tone: "success",
       });
     } catch (err) {

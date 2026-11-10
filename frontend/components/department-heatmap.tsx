@@ -101,6 +101,7 @@ export function DepartmentHeatmap({
                         variant="bare"
                         onClick={() => onOpen(app)}
                         aria-label={`${app.name} in ${d.name}: exposure ${pair.score}, ${SEVERITY_LABEL[severity]}, ${pair.users} users${closed ? `, ${pair.status}` : ""}`}
+                        title={`${app.name} in ${d.name}: Exposure ${pair.score} (${SEVERITY_LABEL[severity]})\n• Vendor posture: ${app.posture_score} / 100\n• Department sensitivity: ×${d.sensitivity.toFixed(2)} (${titleCase(d.data_class)})\n• Active users: ${pair.users}${closed ? `\n• Status: ${titleCase(pair.status)}` : ""}`}
                         className={`flex h-11 w-full items-center justify-center rounded font-mono text-sm font-medium transition-opacity hover:opacity-80 ${
                           closed ? "text-muted line-through" : SEVERITY_STYLE[severity].cell
                         }`}
