@@ -598,7 +598,13 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                     bodyClassName="pt-3"
                     className="dense:flex-[3]"
                   >
-                    <TrafficMap apps={data.apps} events={live.events} lastMinute={live.lastMinute} onOpen={setSelected} />
+                    <TrafficMap
+                      apps={data.apps}
+                      events={live.events}
+                      lastMinute={live.lastMinute}
+                      beat={stale ? null : live.beat}
+                      onOpen={setSelected}
+                    />
                   </Panel>
                   <LiveTraffic
                     events={live.events}

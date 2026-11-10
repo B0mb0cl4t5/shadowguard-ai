@@ -99,13 +99,13 @@ type Pulse = { key: string; region: DataLocation; direction: "out" | "in"; delay
  * traffic does, so a still map means a quiet network. The first batch is history, so it
  * only sets the starting point.
  */
-function usePulses(events: LiveEvent[]): Pulse[] {
+function usePulses(events: LiveEvent[], beat: number | null, fallbackRegions: DataLocation[]): Pulse[] {
   const [pulses, setPulses] = useState<Pulse[]>([]);
   const seen = useRef<Set<number> | null>(null);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
-    if (events.length === 0) return;
+    if (events.length === 0 && fallbackRegions.length === 0) return;
     const isInitial = seen.current === null;
     if (seen.current === null) {
       seen.current = new Set(events.map((e) => e.id));
@@ -116,12 +116,23 @@ function usePulses(events: LiveEvent[]): Pulse[] {
       fresh.forEach((e) => known.add(e.id));
     }
     const baseDelay = isInitial ? ARRIVE_MS + 150 : 0;
-    const batch = fresh
-      .slice(0, MAX_PULSES_PER_BATCH)
-      .flatMap((e, i): Pulse[] => [
-        ...(e.bytes_out > 0 ? [{ key: `${e.id}-out`, region: e.data_location, direction: "out" as const, delay: baseDelay + i * 450 }] : []),
-        ...(e.bytes_in > 0 ? [{ key: `${e.id}-in`, region: e.data_location, direction: "in" as const, delay: baseDelay + i * 450 + 220 }] : []),
-      ]);
+    const tag = `${Date.now()}-${beat ?? 0}`;
+    const batch: Pulse[] =
+      fresh.length > 0
+        ? fresh
+            .slice(0, MAX_PULSES_PER_BATCH)
+            .flatMap((e, i): Pulse[] => [
+              ...(e.bytes_out > 0 ? [{ key: `${tag}-${e.id}-out`, region: e.data_location, direction: "out" as const, delay: baseDelay + i * 450 }] : []),
+              ...(e.bytes_in > 0 ? [{ key: `${tag}-${e.id}-in`, region: e.data_location, direction: "in" as const, delay: baseDelay + i * 450 + 220 }] : []),
+            ])
+        : beat !== null && beat > 0
+          ? fallbackRegions.slice(0, 3).map((region, i) => ({
+              key: `beat-${beat}-${region}`,
+              region,
+              direction: "out" as const,
+              delay: i * 420,
+            }))
+          : [];
     if (batch.length === 0) return;
     setPulses((current) => [...current, ...batch]);
     const longest = Math.max(...batch.map((p) => p.delay)) + LAND_AT + LAND_MS + 100;
@@ -131,7 +142,7 @@ function usePulses(events: LiveEvent[]): Pulse[] {
       setPulses((current) => current.filter((p) => !done.has(p.key)));
     }, longest);
     timers.current.add(timer);
-  }, [events]);
+  }, [events, beat, fallbackRegions]);
 
   useEffect(() => {
     const running = timers.current;
@@ -184,18 +195,43 @@ export function TrafficMap({
   apps,
   events,
   lastMinute,
+  beat = null,
   onOpen,
 }: {
   apps: ShadowApp[];
   events: LiveEvent[];
   lastMinute: LiveFeed["last_minute"] | null;
+  beat?: number | null;
   onOpen: (app: ShadowApp) => void;
 }) {
   const [active, setActive] = useState<DataLocation | null>(null);
   // The dot whose details card is open: on hover, tap or keyboard focus, never hover alone.
   const [tip, setTip] = useState<DataLocation | "campus" | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pulses = usePulses(events);
+
+  const flows = useMemo<Flow[]>(() => {
+    const ids = Object.keys(REGIONS) as DataLocation[];
+    return ids
+      .map((id) => {
+        const inRegion = apps.filter((a) => a.data_location === id);
+        const top = [...inRegion].sort((a, b) => b.max_score - a.max_score)[0];
+        return {
+          id,
+          ...REGIONS[id],
+          apps: inRegion,
+          bytes: inRegion.reduce((sum, a) => sum + a.bytes_out, 0),
+          bytesIn: inRegion.reduce((sum, a) => sum + a.bytes_in, 0),
+          ips: busiestIps(inRegion),
+          worst: top?.severity ?? ("low" as Severity),
+          score: top?.max_score ?? 0,
+        };
+      })
+      .filter((f) => f.apps.length > 0)
+      .sort((a, b) => b.bytes - a.bytes);
+  }, [apps]);
+
+  const fallbackRegions = useMemo(() => flows.map((f) => f.id), [flows]);
+  const pulses = usePulses(events, beat, fallbackRegions);
 
   const clearCloseTimer = () => {
     if (closeTimer.current !== null) {
@@ -219,27 +255,6 @@ export function TrafficMap({
   };
 
   useEffect(() => () => clearCloseTimer(), []);
-
-  const flows = useMemo<Flow[]>(() => {
-    const ids = Object.keys(REGIONS) as DataLocation[];
-    return ids
-      .map((id) => {
-        const inRegion = apps.filter((a) => a.data_location === id);
-        const top = [...inRegion].sort((a, b) => b.max_score - a.max_score)[0];
-        return {
-          id,
-          ...REGIONS[id],
-          apps: inRegion,
-          bytes: inRegion.reduce((sum, a) => sum + a.bytes_out, 0),
-          bytesIn: inRegion.reduce((sum, a) => sum + a.bytes_in, 0),
-          ips: busiestIps(inRegion),
-          worst: top?.severity ?? ("low" as Severity),
-          score: top?.max_score ?? 0,
-        };
-      })
-      .filter((f) => f.apps.length > 0)
-      .sort((a, b) => b.bytes - a.bytes);
-  }, [apps]);
 
   if (flows.length === 0) return <p className="py-10 text-sm text-muted">No traffic to unapproved tools yet.</p>;
 
@@ -427,6 +442,24 @@ export function TrafficMap({
                     strokeWidth="2"
                   />
                 )}
+                {beat !== null && beat > 0 && (
+                  <circle
+                    key={`beat-${f.id}-${beat}`}
+                    cx={x}
+                    cy={y}
+                    r={r}
+                    fill="none"
+                    className="animate-land opacity-0"
+                    style={{
+                      stroke: SEVERITY_STYLE[f.worst].stroke,
+                      strokeWidth: 1.75,
+                      transformBox: "fill-box",
+                      transformOrigin: "center",
+                      animationDelay: `${i * 140}ms`,
+                    }}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
                 <circle
                   cx={x}
                   cy={y}
@@ -444,6 +477,23 @@ export function TrafficMap({
               </g>
             );
           })}
+          {beat !== null && beat > 0 && (
+            <circle
+              key={`campus-beat-${beat}`}
+              cx={HOME[0]}
+              cy={HOME[1]}
+              r="9"
+              fill="none"
+              className="animate-land opacity-0"
+              style={{
+                stroke: "var(--accent)",
+                strokeWidth: 1.75,
+                transformBox: "fill-box",
+                transformOrigin: "center",
+              }}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
           <circle cx={HOME[0]} cy={HOME[1]} r="9" style={{ fill: "var(--surface)", stroke: "var(--accent)" }} strokeWidth="2.5" />
           <circle cx={HOME[0]} cy={HOME[1]} r="4" style={{ fill: "var(--accent)" }} />
         </svg>
