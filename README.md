@@ -289,4 +289,4 @@ Live policy test (dry run): a clean sample scores Low 4; one injected sentence i
 
 ---
 
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** to put it on Vercel, **[SECURITY.md](SECURITY.md)** for the OWASP Top 10 mapping and what to do if a secret leaks, and **[docs/privacy-impact-assessment.md](docs/privacy-impact-assessment.md)** for the privacy assessment template a university's data protection officer fills in.
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** to put it on Vercel, **[SECURITY.md](SECURITY.md)** for the OWASP Top 10 mapping and what to do if a secret leaks, **[docs/UI_GUIDELINES.md](docs/UI_GUIDELINES.md)** for the UI/UX design system and accessibility contract, and **[docs/privacy-impact-assessment.md](docs/privacy-impact-assessment.md)** for the privacy assessment template a university's data protection officer fills in.
