@@ -531,7 +531,16 @@ export function TrafficMap({
           return (
             <span
               key={f.id}
-              className={`pointer-events-none absolute ${posClass}`}
+              onMouseEnter={() => {
+                clearCloseTimer();
+                setActive(f.id);
+              }}
+              onMouseLeave={() => {
+                if (tip === f.id) hideTip();
+                else setActive(null);
+              }}
+              onClick={() => showTip(f.id)}
+              className={`absolute cursor-pointer ${posClass}`}
               style={{ left: `${leftPct}%`, top: `${topPct}%` }}
             >
               {/* Region name, severity dot, and outbound volume right on the badge for instant scanning. */}
