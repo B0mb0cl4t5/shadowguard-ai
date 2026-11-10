@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { relativeTime, titleCase } from "@/lib/format";
+import { evaluatePdpa } from "@/lib/pdpa";
 import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import type { Evidence, Factor, PolicyAnalysis, Role, ShadowApp, VendorDetail } from "@/lib/types";
 import { useFocusTrap } from "@/lib/use-focus-trap";
@@ -333,6 +334,28 @@ function AnalysisView({ analysis, label, meta }: { analysis: PolicyAnalysis; lab
           Posture total <span className="font-mono text-ink">{analysis.posture_score}</span>{" "}
           <span className="font-mono">/ 100</span>
         </p>
+      </section>
+
+      <section>
+        <h3 className="text-sm font-semibold text-ink">Malaysian PDPA (Act 709) statutory check</h3>
+        <p className="mb-3 text-xs text-muted">
+          Mapped automatically from the extracted clauses against the Personal Data Protection Act 2010 (2024 Amendment).
+        </p>
+        <ul className="space-y-2">
+          {evaluatePdpa(analysis).map((chk) => (
+            <li key={chk.section}>
+              <SubCard className="p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-ink">
+                    <span className="font-mono text-ink2">{chk.section}</span> · {chk.principle}
+                  </span>
+                  <Badge tone={chk.tone}>{chk.status}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-ink2">{chk.detail}</p>
+              </SubCard>
+            </li>
+          ))}
+        </ul>
       </section>
     </div>
   );

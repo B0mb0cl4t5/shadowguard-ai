@@ -7,7 +7,7 @@ import type { Theme } from "@/lib/use-theme";
 import type { Remediation, Role, ShadowApp } from "@/lib/types";
 
 import type { SeverityFilter, SortKey } from "./apps-panel";
-import { BlockIcon, ChevronIcon, LogoutIcon, MoonIcon, RadarIcon, RefreshIcon, SunIcon } from "./icons";
+import { BlockIcon, BoltIcon, ChevronIcon, LogoutIcon, MoonIcon, RadarIcon, RefreshIcon, SunIcon, TicketIcon } from "./icons";
 import { Badge, SeverityBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -41,6 +41,9 @@ export function CommandPalette({
   pending,
   theme = "dark",
   onToggleTheme,
+  onSimulate,
+  onExportCsv,
+  onExportFortigate,
   onOpenApp,
   onReview,
   onFilter,
@@ -55,6 +58,9 @@ export function CommandPalette({
   pending: Remediation[];
   theme?: Theme;
   onToggleTheme?: () => void;
+  onSimulate?: () => void;
+  onExportCsv?: () => void;
+  onExportFortigate?: () => void;
   onOpenApp: (app: ShadowApp) => void;
   onReview: (r: Remediation) => void;
   onFilter: (f: SeverityFilter) => void;
@@ -123,6 +129,36 @@ export function CommandPalette({
     for (const [key, label] of sorts) {
       out.push({ id: `sort-${key}`, group: "Sort tools", label, keywords: "sort order", icon: <ChevronIcon size={16} />, run: () => onSort(key) });
     }
+    if (onSimulate) {
+      out.push({
+        id: "simulate",
+        group: "Actions",
+        label: "Simulate live traffic burst (5 campus events)",
+        keywords: "simulate demo traffic burst live test events",
+        icon: <BoltIcon size={16} />,
+        run: onSimulate,
+      });
+    }
+    if (onExportCsv) {
+      out.push({
+        id: "export-csv",
+        group: "Actions",
+        label: "Export PDPA governance audit (CSV)",
+        keywords: "export download csv pdpa compliance audit report",
+        icon: <TicketIcon size={16} />,
+        run: onExportCsv,
+      });
+    }
+    if (onExportFortigate) {
+      out.push({
+        id: "export-fortigate",
+        group: "Actions",
+        label: "Export FortiGate firewall blocklist",
+        keywords: "export download fortigate firewall acl blocklist config",
+        icon: <BlockIcon size={16} />,
+        run: onExportFortigate,
+      });
+    }
     out.push({
       id: "refresh",
       group: "Actions",
@@ -143,7 +179,7 @@ export function CommandPalette({
     }
     out.push({ id: "logout", group: "Actions", label: "Sign out", keywords: "log out exit", icon: <LogoutIcon size={16} />, run: onLogout });
     return out;
-  }, [role, pending, apps, theme, onToggleTheme, onReview, onOpenApp, onFilter, onSort, onRefresh, onLogout]);
+  }, [role, pending, apps, theme, onToggleTheme, onSimulate, onExportCsv, onExportFortigate, onReview, onOpenApp, onFilter, onSort, onRefresh, onLogout]);
 
   // Every typed word must appear somewhere in the item's label or keywords.
   const visible = useMemo(() => {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { simulateTrafficBurst } from "@/lib/actions";
 import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import { applyReducedMotion, loadReducedMotion } from "@/lib/use-reduced-motion";
 import { applyTheme, loadTheme, type Theme } from "@/lib/use-theme";
@@ -14,7 +15,8 @@ import { TrendChart } from "./charts";
 import { CommandPalette } from "./command-palette";
 import { DecisionQueue } from "./decision-queue";
 import { DepartmentHeatmap } from "./department-heatmap";
-import { CloseIcon, CompareIcon, LogoutIcon, MoonIcon, MotionIcon, PrinterIcon, RefreshIcon, ShieldMark, SunIcon } from "./icons";
+import { buildFortigateConfig, buildPdpaCsv, downloadTextFile, GovernanceExport } from "./governance-export";
+import { BoltIcon, CloseIcon, CompareIcon, LogoutIcon, MoonIcon, MotionIcon, PrinterIcon, RefreshIcon, ShieldMark, SunIcon } from "./icons";
 import { DepartmentBars, DetectionColumns, RiskMap, SeverityRing, TrainingBreakdown } from "./insight-charts";
 import { KpiRow } from "./kpi-row";
 import { LiveTraffic } from "./live-traffic";
@@ -118,6 +120,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   const [now, setNow] = useState(() => Date.parse(initial.generated_at));
   const [stale, setStale] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [selected, setSelected] = useState<ShadowApp | null>(null);
   const [view, setView] = useState<ToolsView>({ filter: "all", sort: { key: "exposure", dir: "desc" } });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -401,6 +404,38 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
   const clearCompare = useCallback(() => setCompareApps([]), []);
 
+  const runSimulation = useCallback(async () => {
+    if (simulating) return;
+    setSimulating(true);
+    try {
+      const res = await simulateTrafficBurst();
+      void pollLive();
+      toast({
+        title: "Simulated live traffic burst",
+        description: `${res.accepted} campus metadata events sent to the live stream.`,
+        tone: "success",
+      });
+    } catch (err) {
+      toast({
+        title: "Simulation failed",
+        description: failureMessage(err, "Could not send telemetry burst."),
+        tone: "danger",
+      });
+    } finally {
+      setSimulating(false);
+    }
+  }, [simulating, pollLive, toast]);
+
+  const exportCsv = useCallback(() => {
+    downloadTextFile("shadowguard-pdpa-audit.csv", buildPdpaCsv(data), "text/csv;charset=utf-8");
+    toast({ title: "Downloaded PDPA audit CSV", description: "shadowguard-pdpa-audit.csv saved.", tone: "success" });
+  }, [data, toast]);
+
+  const exportFortigate = useCallback(() => {
+    downloadTextFile("shadowguard-fortigate-blocklist.conf", buildFortigateConfig(data), "text/plain;charset=utf-8");
+    toast({ title: "Downloaded FortiGate config", description: "shadowguard-fortigate-blocklist.conf saved.", tone: "success" });
+  }, [data, toast]);
+
   return (
     <>
       {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles), unless the viewer
@@ -431,6 +466,18 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             <span className="hidden items-center gap-1.5 text-xs text-muted sm:inline-flex">
               <LastSynced at={live.syncedAt} />
             </span>
+            {role === "admin" && (
+              <Button
+                size="sm"
+                onClick={() => void runSimulation()}
+                disabled={simulating}
+                variant="secondary"
+                title="Send 5 live campus metadata events through the real ingest API to test real-time detection"
+              >
+                <BoltIcon size={14} className="text-accent" />
+                <span className="hidden lg:inline">{simulating ? "Sending…" : "Simulate burst"}</span>
+              </Button>
+            )}
             <Button
               size="icon"
               onClick={() => void refresh()}
@@ -656,6 +703,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             <TabPanel id="reviews">
               <div className="grid grid-cols-12 gap-6">
                 <DecisionQueue detailed pending={pending} data={data} role={role} now={now} onReview={setReview} className="col-span-12" />
+                <GovernanceExport data={data} onToast={toast} className="col-span-12" />
                 <RemediationLog items={data.remediations} role={role} now={now} onReview={setReview} className="col-span-12" />
               </div>
             </TabPanel>
@@ -712,6 +760,9 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           pending={pending}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onSimulate={role === "admin" ? () => void runSimulation() : undefined}
+          onExportCsv={exportCsv}
+          onExportFortigate={exportFortigate}
           onOpenApp={setSelected}
           onReview={setReview}
           onFilter={(filter) => {

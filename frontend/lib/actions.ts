@@ -14,3 +14,15 @@ export async function decideRemediation(id: number, decision: "approve" | "rejec
     throw new Error(body.detail ?? `Request failed (${res.status})`);
   }
 }
+
+export async function simulateTrafficBurst(): Promise<{ accepted: number }> {
+  const res = await fetch("/api/simulate", {
+    method: "POST",
+    signal: AbortSignal.timeout(TIMEOUT_MS.request),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Simulation failed (${res.status})`);
+  }
+  return (await res.json()) as { accepted: number };
+}
