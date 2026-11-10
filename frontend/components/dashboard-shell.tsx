@@ -195,15 +195,12 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   const openTab = useCallback((next: TabId) => {
     setTab(next);
     if (tabFromHash(window.location.hash) !== next) window.history.pushState(null, "", `#${next}`);
-    if (next === "overview") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
   const goHome = useCallback(() => {
     openTab("overview");
     setSelected(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }, [openTab]);
 
   // Say what changed when a poll brings it, so the page doesn't mutate silently under
