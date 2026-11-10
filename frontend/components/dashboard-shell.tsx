@@ -441,7 +441,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles), unless the viewer
           picked the full page; the other tabs scroll. */}
       <div className={tab === "overview" && layout === "fit" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
-      <header className="border-b border-header-line bg-header">
+      <header className="sticky top-0 z-30 border-b border-header-line bg-header dense:static">
         <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8 dense:min-h-12 dense:py-1.5">
           <div className="flex min-w-0 items-center gap-2.5">
             <ShieldMark size={22} className="shrink-0 text-accent" />

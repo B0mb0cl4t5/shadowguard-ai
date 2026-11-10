@@ -34,7 +34,12 @@ export function Tabs<T extends string>({
 
   return (
     // `relative` keeps a tab's screen-reader-only text inside this scroller, or it widens the page on a phone.
-    <div role="tablist" aria-label={label} className="relative flex gap-6 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none]">
+    // `sticky top-14` pins the tab bar right below the 56px (`min-h-14`) header when scrolling long pages.
+    <div
+      role="tablist"
+      aria-label={label}
+      className="sticky top-14 z-20 flex gap-6 overflow-x-auto overflow-y-hidden border-b border-line bg-ground pt-2 dense:relative dense:top-auto dense:pt-0 [scrollbar-width:none]"
+    >
       {items.map((item) => {
         const active = item.id === selected;
         return (
