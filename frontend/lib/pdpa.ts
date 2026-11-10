@@ -10,6 +10,15 @@ export type PdpaCheck = {
 };
 
 /**
+ * The retention answer as a number of days. The backend sends "90 days" for a saved
+ * analysis and a bare "90" from a dry run or Gemini; "indefinite" and "unknown" give null.
+ */
+function retentionDays(value: string): number | null {
+  const m = /^\s*(\d+)\s*(?:days?)?\s*$/i.exec(value);
+  return m ? Number(m[1]) : null;
+}
+
+/**
  * Evaluates a vendor's extracted privacy policy answers against Malaysia's
  * Personal Data Protection Act 2010 (Act 709, as amended 2024).
  */
@@ -80,34 +89,39 @@ export function evaluatePdpa(analysis: Pick<PolicyAnalysis, "answers" | "verific
     };
   }
 
-  // 3. Section 10 — Retention Principle
+  // 3. Section 10 — Retention Principle. Same cut-offs as the backend's posture score:
+  // over a year, 31 to 365 days, or 30 days or less. Anything unreadable needs a review.
+  const days = retentionDays(retention);
   let sec10: PdpaCheck;
-  if (retention === "indefinite" || retention === ">365d") {
+  if (retention === "indefinite" || (days !== null && days > 365)) {
     sec10 = {
       section: "s. 10",
       principle: "Retention Principle",
       status: "Violation",
       tone: "danger",
-      detail: `Retains uploaded records (${retention}) beyond the time needed for processing.`,
+      detail:
+        days === null
+          ? "Keeps uploaded records indefinitely, beyond the time needed for processing."
+          : `Keeps uploaded records for ${days} days, beyond the time needed for processing.`,
     };
-  } else if (retention === "31-365d" || retention === "unknown") {
+  } else if (days !== null && days <= 30) {
+    sec10 = {
+      section: "s. 10",
+      principle: "Retention Principle",
+      status: "Pass",
+      tone: "success",
+      detail: `Deletes uploaded content within ${days} days.`,
+    };
+  } else {
     sec10 = {
       section: "s. 10",
       principle: "Retention Principle",
       status: "Review",
       tone: "warning",
       detail:
-        retention === "unknown"
-          ? "Policy does not commit to a deletion schedule."
-          : "Retains uploaded records for up to a year (31–365 days).",
-    };
-  } else {
-    sec10 = {
-      section: "s. 10",
-      principle: "Retention Principle",
-      status: "Pass",
-      tone: "success",
-      detail: "Deletes uploaded content within 30 days.",
+        days !== null
+          ? `Keeps uploaded records for ${days} days, up to a year.`
+          : "Policy does not commit to a deletion schedule.",
     };
   }
 
