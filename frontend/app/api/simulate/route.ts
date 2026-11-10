@@ -16,7 +16,7 @@ const BURST_TEMPLATES = [
   },
   {
     domain: "paperpilot.ai",
-    department: "Research & Postgraduate Office",
+    department: "Examinations & Assessment",
     dest_ip: "203.0.113.126",
     minUp: 240_000,
     maxUp: 880_000,

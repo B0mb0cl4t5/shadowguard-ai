@@ -410,6 +410,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     try {
       const res = await simulateTrafficBurst();
       void pollLive();
+      void refresh();
       toast({
         title: "Simulated live traffic burst",
         description: `${res.accepted} campus metadata events sent to the live stream.`,
@@ -424,7 +425,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     } finally {
       setSimulating(false);
     }
-  }, [simulating, pollLive, toast]);
+  }, [simulating, pollLive, refresh, toast]);
 
   const exportCsv = useCallback(() => {
     downloadTextFile("shadowguard-pdpa-audit.csv", buildPdpaCsv(data), "text/csv;charset=utf-8");
