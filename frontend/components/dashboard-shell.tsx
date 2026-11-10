@@ -195,7 +195,16 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
   const openTab = useCallback((next: TabId) => {
     setTab(next);
     if (tabFromHash(window.location.hash) !== next) window.history.pushState(null, "", `#${next}`);
+    if (next === "overview") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
+
+  const goHome = useCallback(() => {
+    openTab("overview");
+    setSelected(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [openTab]);
 
   // Say what changed when a poll brings it, so the page doesn't mutate silently under
   // the user. Each change is reported once, against the data from the previous poll.
@@ -444,11 +453,16 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       <div className={tab === "overview" && layout === "fit" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
       <header className="sticky top-0 z-30 border-b border-header-line bg-header dense:static">
         <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8 dense:min-h-12 dense:py-1.5">
-          <div className="flex min-w-0 items-center gap-2.5">
+          <Button
+            variant="bare"
+            onClick={goHome}
+            aria-label="ShadowGuard home, go to Overview"
+            className="flex min-w-0 items-center gap-2.5 text-left focus-visible:ring-2 focus-visible:ring-accent rounded-sm cursor-pointer"
+          >
             <ShieldMark size={22} className="shrink-0 text-accent" />
             <span className="text-base font-semibold text-ink">ShadowGuard</span>
             <span className="hidden text-sm text-muted sm:inline">University network</span>
-          </div>
+          </Button>
 
           {/* On a phone the controls wrap rather than push the page sideways. */}
           <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
