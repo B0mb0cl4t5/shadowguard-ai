@@ -54,7 +54,11 @@ export function Tabs<T extends string>({
             aria-selected={active}
             aria-controls={`panel-${item.id}`}
             tabIndex={active ? 0 : -1}
-            onClick={() => onSelect(item.id)}
+            onClick={() => {
+              onSelect(item.id);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              document.documentElement.scrollTo?.({ top: 0, behavior: "smooth" });
+            }}
             onKeyDown={onKey}
             className={`-mb-px inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 pb-3 text-base transition-colors [@media(pointer:coarse)]:min-h-11 ${
               active ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:border-control hover:text-ink2"

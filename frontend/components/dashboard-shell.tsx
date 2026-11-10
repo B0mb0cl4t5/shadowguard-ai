@@ -196,6 +196,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     setTab(next);
     if (tabFromHash(window.location.hash) !== next) window.history.pushState(null, "", `#${next}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
+    document.documentElement.scrollTo?.({ top: 0, behavior: "smooth" });
   }, []);
 
   const goHome = useCallback(() => {
