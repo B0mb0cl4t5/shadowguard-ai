@@ -269,6 +269,18 @@ export function TrafficMap({
 
   useEffect(() => () => clearCloseTimer(), []);
 
+  // Dismiss pinned or active tooltip when Escape is pressed
+  useEffect(() => {
+    if (!tip) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        dismiss();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tip]);
+
   if (flows.length === 0) return <p className="py-10 text-sm text-muted">No traffic to unapproved tools yet.</p>;
 
   const maxOut = Math.max(1, ...flows.map((f) => f.bytes));
@@ -443,6 +455,7 @@ export function TrafficMap({
                 onClick={() => showTip(f.id, true)}
                 onMouseEnter={() => showTip(f.id)}
                 onMouseLeave={() => hideTip()}
+                aria-hidden="true"
               >
                 {f.unstated && (
                   <circle
@@ -522,6 +535,7 @@ export function TrafficMap({
             onClick={() => showTip("campus", true)}
             onMouseEnter={() => showTip("campus")}
             onMouseLeave={() => hideTip()}
+            aria-hidden="true"
           >
             {tip === "campus" && (
               <circle
@@ -544,8 +558,16 @@ export function TrafficMap({
           onClick={() => showTip("campus", true)}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && showTip("campus", true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              showTip("campus", true);
+            } else if (e.key === "Escape") {
+              dismiss();
+            }
+          }}
           aria-label="Investigate Campus Anchor"
+          aria-expanded={tip === "campus"}
         >
           <span
             className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium text-accent transition-colors ${
@@ -589,8 +611,16 @@ export function TrafficMap({
               style={{ left: `${leftPct}%`, top: `${topPct}%` }}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && showTip(f.id, true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  showTip(f.id, true);
+                } else if (e.key === "Escape") {
+                  dismiss();
+                }
+              }}
               aria-label={`Investigate ${f.label} (${formatBytes(f.bytes)})`}
+              aria-expanded={tip === f.id}
             >
               {/* Region name, severity dot, and outbound volume right on the badge for instant scanning. */}
               <span
@@ -627,6 +657,7 @@ export function TrafficMap({
             style={{ left: `${(dot.at[0] / W) * 100}%`, top: `${(dot.at[1] / H) * 100}%` }}
             aria-label={`${dot.label}. Click to investigate`}
             aria-describedby={tip === dot.id ? "map-dot-details" : undefined}
+            aria-expanded={tip === dot.id}
             onPointerEnter={(e) => e.pointerType === "mouse" && showTip(dot.id)}
             onPointerLeave={(e) => e.pointerType === "mouse" && hideTip()}
             onFocus={() => showTip(dot.id)}
