@@ -35,7 +35,7 @@ test("no colours outside the tokens", () => {
 
 test("no raw hex colours outside token definitions", () => {
   // globals.css defines the CSS custom properties (tokens) with hex values — that's the source.
-  // layout.tsx sets the browser theme-color meta tag (#0b1120 = --ground), which cannot
+  // layout.tsx sets the browser theme-color meta tag (#101114 = --ground), which cannot
   // read a CSS variable. Everywhere else must use var(--token).
   const screens = files.filter((f) => f.name !== "app/globals.css" && f.name !== "app/layout.tsx");
   assert.deepEqual(offenders(/#[0-9a-fA-F]{6}\b/, screens), []);

@@ -10,13 +10,11 @@ All colours are defined as CSS custom properties in [`frontend/app/globals.css`]
 
 | Token | Role | Dark Mode | Light Mode |
 |---|---|---|---|
-| `--ground` | Canvas background | `#0b1120` | `#f1f5f9` |
-| `--surface` | Primary panel surface | `#111a2e` | `#ffffff` |
-| `--header` | Default panel header band | `#152038` | `#f8fafc` |
-| `--header-warning` | Pending human-decision alert header | `#281f18` | `#fffbeb` |
-| `--raised` | Interactive control / nested card | `#18243d` | `#f1f5f9` |
+| `--ground` | Canvas background | `#101114` | `#f3f4f6` |
+| `--surface` | Primary panel surface | `#17191d` | `#ffffff` |
+| `--raised` | Interactive control / nested card | `#202329` | `#eceef1` |
 | `--text` / `--text-2` | Primary & secondary ink | `#f1f5f9` / `#cbd5e1` | `#0f172a` / `#334155` |
-| `--accent` | Brand & focus ring | `#2dd4bf` | `#0d9488` |
+| `--accent` | Mark, focus ring, open section, primary button (the ink colour) | `#f3f4f6` | `#121316` |
 | `--data` | Non-severity chart series | `#818cf8` | `#4f46e5` |
 | `--sev-critical` | Critical severity ($\ge 70$) | `#fb7185` | `#e11d48` |
 | `--sev-high` | High severity ($\ge 50$) | `#fbbf24` | `#d97706` |
@@ -34,7 +32,7 @@ To keep the software supply chain minimal (OWASP A06 in [`SECURITY.md`](../SECUR
 - **[`components/ui/badge.tsx`](../frontend/components/ui/badge.tsx):** `<Badge>` and `<SeverityBadge>` (always pairs colour with text and/or numeric score).
 - **[`components/ui/input.tsx`](../frontend/components/ui/input.tsx):** `<Input>` and `<Textarea>` with consistent `focus-visible:ring-2 focus-visible:ring-accent`.
 - **[`components/ui/table.tsx`](../frontend/components/ui/table.tsx):** Accessible table primitives (`<Table>`, `<TableHeader>`, `<TableBody>`, `<TableRow>`, `<TableHead>`, `<TableCell>`).
-- **[`components/ui/tabs.tsx`](../frontend/components/ui/tabs.tsx):** ARIA tablist with Left/Right/Home/End keyboard navigation and URL hash syncing (`#overview`, `#tools`, `#reviews`, `#departments`).
+- **[`components/ui/tabs.tsx`](../frontend/components/ui/tabs.tsx):** The section rail (a left rail from `lg`, a bottom bar on phones): an ARIA tablist with arrow-key navigation and URL hash syncing (`#overview`, `#tools`, `#reviews`, `#departments`).
 - **[`components/icons.tsx`](../frontend/components/icons.tsx):** Single-style 1.75px stroke SVG icons accepting `size` and `className`.
 
 ---
@@ -58,4 +56,4 @@ To keep the software supply chain minimal (OWASP A06 in [`SECURITY.md`](../SECUR
   - [`DetectionColumns`](../frontend/components/insight-charts.tsx) implements `role="slider"` so daily detections can be inspected with Left/Right arrow keys without a mouse.
 - **Meaningful Motion & Reduced Motion:**
   - Motion is driven by real server responses (`live.beat` and incoming telemetry events).
-  - The header's **Motion** toggle (and `prefers-reduced-motion: reduce`) disables all CSS transitions, stagger delays, and rolling number animations across the entire app.
+  - The **Motion** toggle (and `prefers-reduced-motion: reduce`) disables all CSS transitions, stagger delays, and rolling number animations across the entire app.

@@ -16,7 +16,7 @@ import { CommandPalette } from "./command-palette";
 import { DecisionQueue } from "./decision-queue";
 import { DepartmentHeatmap } from "./department-heatmap";
 import { buildFortigateConfig, buildPdpaCsv, downloadTextFile, GovernanceExport } from "./governance-export";
-import { BoltIcon, CloseIcon, CompareIcon, LogoutIcon, MoonIcon, MotionIcon, PrinterIcon, RefreshIcon, ShieldMark, SunIcon } from "./icons";
+import { BoltIcon, CloseIcon, CompareIcon, HeatmapIcon, LogoutIcon, MoonIcon, MotionIcon, OverviewIcon, PrinterIcon, RefreshIcon, ReviewIcon, SearchIcon, ShieldMark, SunIcon, ToolsIcon } from "./icons";
 import { DepartmentBars, DetectionColumns, RiskMap, SeverityRing, TrainingBreakdown } from "./insight-charts";
 import { KpiRow } from "./kpi-row";
 import { LiveTraffic } from "./live-traffic";
@@ -49,6 +49,13 @@ type LiveState = {
 
 type TabId = "overview" | "tools" | "reviews" | "departments";
 const TAB_IDS: TabId[] = ["overview", "tools", "reviews", "departments"];
+/** The rail keeps its labels short; the page title gives each section its full name. */
+const SECTION_TITLE: Record<TabId, string> = {
+  overview: "Shadow AI exposure",
+  tools: "Tool exposure",
+  reviews: "Remediation and reviews",
+  departments: "Department heatmap",
+};
 const tabFromHash = (hash: string): TabId => TAB_IDS.find((t) => t === hash.slice(1)) ?? "overview";
 
 type ToolsView = { filter: SeverityFilter; sort: SortState };
@@ -448,23 +455,89 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     toast({ title: "Downloaded FortiGate config", description: "shadowguard-fortigate-blocklist.conf saved.", tone: "success" });
   }, [data, toast]);
 
+  // Refresh, animations, theme, print and sign out: in the rail's foot once it stands on the left, in the top bar on a phone.
+  const utilities = (
+    <>
+      <Button size="icon" onClick={() => void refresh()} aria-label="Refresh now" disabled={refreshing} variant="ghost" title={refreshing ? "Refreshing…" : "Refresh data"}>
+        <RefreshIcon size={16} className={refreshing ? "animate-spin" : ""} />
+      </Button>
+      <Button
+        size="icon"
+        onClick={toggleMotion}
+        aria-label={reduceMotion ? "Turn animations on" : "Turn animations off"}
+        variant="ghost"
+        title={reduceMotion ? "Turn animations on" : "Turn animations off"}
+        className={reduceMotion ? "text-muted" : ""}
+      >
+        <MotionIcon size={16} />
+      </Button>
+      <Button
+        size="icon"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        variant="ghost"
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+      </Button>
+      <Button variant="ghost" size="icon" onClick={() => window.print()} aria-label="Print this view" title="Print" className="hidden sm:inline-flex">
+        <PrinterIcon size={16} />
+      </Button>
+    </>
+  );
+  const signOut = (
+    <Button variant="ghost" size="icon" onClick={() => void logout()} aria-label="Sign out" title="Sign out">
+      <LogoutIcon size={15} />
+    </Button>
+  );
+  const summary = finding(data, pending.length);
+
   return (
     <>
-      {/* On a wide enough window the Overview fills exactly one screen (the `dense:` styles), unless the viewer
-          picked the full page; the other tabs scroll. */}
+      {/* The page stands clear of the section rail: 96px of icons from `lg`, a full 208px rail from `2xl`.
+          On a wide enough window the Overview fills exactly one screen (the `dense:` styles), unless the viewer
+          picked the full page; the other sections scroll. */}
+      <div className="lg:pl-24 2xl:pl-52 print:pl-0">
       <div className={tab === "overview" && layout === "fit" ? "one-screen dense:flex dense:h-dvh dense:flex-col" : undefined}>
-      <header className="sticky top-0 z-30 border-b border-header-line bg-header dense:static">
-        <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-8 dense:min-h-12 dense:py-1.5">
-          <Button
-            variant="bare"
-            onClick={goHome}
-            aria-label="ShadowGuard home, go to Overview"
-            className="flex min-w-0 items-center gap-2.5 text-left focus-visible:ring-2 focus-visible:ring-accent rounded-sm cursor-pointer"
-          >
-            <ShieldMark size={22} className="shrink-0 text-accent" />
-            <span className="text-base font-semibold text-ink">ShadowGuard</span>
-            <span className="hidden text-sm text-muted sm:inline">University network</span>
+      <Tabs
+        label="Dashboard views"
+        selected={tab}
+        onSelect={openTab}
+        items={[
+          { id: "overview", label: "Overview", icon: <OverviewIcon size={20} /> },
+          { id: "tools", label: "Tools", title: SECTION_TITLE.tools, icon: <ToolsIcon size={20} /> },
+          { id: "reviews", label: "Reviews", title: SECTION_TITLE.reviews, icon: <ReviewIcon size={20} />, count: pending.length },
+          { id: "departments", label: "Departments", title: SECTION_TITLE.departments, icon: <HeatmapIcon size={20} /> },
+        ]}
+        brand={
+          <Button variant="bare" onClick={goHome} aria-label="ShadowGuard home, go to Overview" className="flex cursor-pointer items-center gap-2.5 rounded-sm text-left">
+            <ShieldMark size={24} className="shrink-0 text-accent" />
+            <span className="hidden text-md font-semibold tracking-tight text-ink 2xl:inline">ShadowGuard</span>
           </Button>
+        }
+        footer={
+          <>
+            <div className="flex flex-col items-center gap-1 2xl:flex-row">{utilities}</div>
+            <div className="mt-2 flex w-full flex-col items-center gap-1 border-t border-rule pt-2 2xl:flex-row 2xl:justify-between 2xl:pl-2">
+              <span className="text-xs text-ink2">{role === "admin" ? "Admin" : "Viewer"}</span>
+              {signOut}
+            </div>
+          </>
+        }
+      />
+
+      <header className="z-20 border-b border-line bg-ground sm:sticky sm:top-0 dense:static print:static">
+        <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-6 dense:min-h-12 dense:py-1.5">
+          <div className="flex min-w-0 flex-1 items-baseline gap-x-4">
+            <Button variant="bare" onClick={goHome} aria-label="ShadowGuard home, go to Overview" className="shrink-0 cursor-pointer self-center rounded-sm lg:hidden">
+              <ShieldMark size={22} className="text-accent" />
+            </Button>
+            <h1 className="shrink-0 text-md font-semibold tracking-tight text-ink sm:text-lg">{SECTION_TITLE[tab]}</h1>
+            {/* The worst exposure in words. Beside the title where there is room for it, under the bar where there isn't. */}
+            <p className="hidden min-w-0 truncate text-sm text-ink2 xl:block" title={summary}>
+              {summary}
+            </p>
+          </div>
 
           {/* On a phone the controls wrap rather than push the page sideways. */}
           <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
@@ -483,47 +556,12 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             <span className="hidden items-center gap-1.5 text-xs text-muted sm:inline-flex">
               <LastSynced at={live.syncedAt} />
             </span>
-            {role === "admin" && (
-              <Button
-                size="sm"
-                onClick={() => void runSimulation()}
-                disabled={simulating}
-                variant="secondary"
-                title="Send 5 live campus metadata events through the real ingest API to test real-time detection"
-              >
-                <BoltIcon size={14} className="text-accent" />
-                <span className="hidden lg:inline">{simulating ? "Sending…" : "Simulate burst"}</span>
-              </Button>
+            {/* A reminder to switch demo sign-in off: while it's on, anyone with the link gets in. */}
+            {demo && (
+              <Badge tone="warning" title="Demo sign-in is on (DEMO_SIGN_IN), so anyone with the link can sign in. Turn it off after recording.">
+                Demo<span className="hidden sm:inline"> mode</span>
+              </Badge>
             )}
-            <Button
-              size="icon"
-              onClick={() => void refresh()}
-              aria-label="Refresh now"
-              disabled={refreshing}
-              variant="ghost"
-              title={refreshing ? "Refreshing…" : "Refresh data"}
-            >
-              <RefreshIcon size={16} className={refreshing ? "animate-spin" : ""} />
-            </Button>
-            <Button
-              size="icon"
-              onClick={toggleMotion}
-              aria-label={reduceMotion ? "Turn animations on" : "Turn animations off"}
-              variant="ghost"
-              title={reduceMotion ? "Turn animations on" : "Turn animations off"}
-              className={reduceMotion ? "text-muted" : ""}
-            >
-              <MotionIcon size={16} />
-            </Button>
-            <Button
-              size="icon"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              variant="ghost"
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
-            </Button>
             {/* Only where it changes something: the Overview, on a window big enough to fit it on one screen. */}
             {tab === "overview" && (
               <Segmented
@@ -545,9 +583,21 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
                 variant="ghost"
                 title="Pick one more tool to compare, or select this to clear"
               >
-                <CompareIcon size={16} className="text-accent" />
+                <CompareIcon size={16} />
                 <span className="hidden sm:inline">1 of 2 picked</span>
                 <CloseIcon size={14} />
+              </Button>
+            )}
+            {role === "admin" && (
+              <Button
+                size="sm"
+                onClick={() => void runSimulation()}
+                disabled={simulating}
+                variant="secondary"
+                title="Send 5 live campus metadata events through the real ingest API to test real-time detection"
+              >
+                <BoltIcon size={14} />
+                <span className="hidden md:inline">{simulating ? "Sending…" : "Simulate burst"}</span>
               </Button>
             )}
             <Button
@@ -556,51 +606,24 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
               aria-label="Open command menu"
               aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-                <circle cx="11" cy="11" r="6.5" />
-                <path d="m20 20-4.2-4.2" />
-              </svg>
+              <SearchIcon size={15} />
               <span className="hidden md:inline">Search</span>
               <kbd className="hidden font-mono text-xs font-normal text-muted md:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => window.print()} aria-label="Print this view" title="Print" className="hidden sm:inline-flex">
-              <PrinterIcon size={16} />
-            </Button>
-            {/* A reminder to switch demo sign-in off: while it's on, anyone with the link gets in. */}
-            {demo && (
-              <Badge tone="warning" title="Demo sign-in is on (DEMO_SIGN_IN), so anyone with the link can sign in. Turn it off after recording.">
-                Demo<span className="hidden sm:inline"> mode</span>
-              </Badge>
-            )}
-            <span className="px-1 text-xs text-ink2">{role === "admin" ? "Admin" : "Viewer"}</span>
-            <Button variant="ghost" size="icon" onClick={() => void logout()} aria-label="Sign out" title="Sign out">
-              <LogoutIcon size={15} />
-            </Button>
+            <div className="flex items-center gap-1.5 lg:hidden">
+              {utilities}
+              {signOut}
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[1500px] px-4 pb-12 pt-6 sm:px-8 dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:pb-3 dense:pt-3">
-        <div className="mb-4 dense:mb-2 dense:flex dense:items-baseline dense:gap-4">
-          <h1 className="text-title font-semibold tracking-tight text-ink dense:shrink-0 dense:text-lg">Shadow AI exposure</h1>
-          <p className="mt-1 text-base text-ink2 dense:mt-0 dense:truncate">{finding(data, pending.length)}</p>
-        </div>
+      <div className="mx-auto w-full max-w-[1500px] px-4 pb-24 pt-5 sm:px-6 lg:pb-12 dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:pb-3 dense:pt-3">
+        <p className="mb-4 text-base text-ink2 xl:hidden">{summary}</p>
 
         <KpiRow data={data} />
 
-        <div className="mt-6 dense:mt-2 dense:flex dense:min-h-0 dense:flex-1 dense:flex-col">
-          <Tabs
-            label="Dashboard views"
-            selected={tab}
-            onSelect={openTab}
-            items={[
-              { id: "overview", label: "Overview" },
-              { id: "tools", label: "Tool exposure" },
-              { id: "reviews", label: "Remediation and reviews", count: pending.length },
-              { id: "departments", label: "Department heatmap" },
-            ]}
-          />
-
+        <div className="dense:flex dense:min-h-0 dense:flex-1 dense:flex-col">
           {tab === "overview" && (
             <TabPanel id="overview">
               {/* 12 columns, one 24px gutter: 8 + 4 on xl, so every row lands on the canvas edges. On one screen
@@ -744,6 +767,7 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           vendors (Summarix, GradeSync and the rest) and their traffic are fictional. Real AI tools, such as ChatGPT and Gemini, appear only
           when a collector reports real traffic, and their scores are automated readings of each vendor&apos;s published policy.
         </footer>
+      </div>
       </div>
       </div>
 

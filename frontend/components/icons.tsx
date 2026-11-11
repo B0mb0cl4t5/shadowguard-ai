@@ -160,3 +160,42 @@ export const MoonIcon = (p: IconProps) => (
     <path d="M20.2 14.8A8 8 0 0 1 9.2 3.8a8 8 0 1 0 11 11Z" />
   </svg>
 );
+
+export const SearchIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m20 20-4.2-4.2" />
+  </svg>
+);
+
+/** The four sections of the rail. */
+export const OverviewIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="3.5" width="7.5" height="10" rx="1.5" />
+    <rect x="13" y="3.5" width="7.5" height="6" rx="1.5" />
+    <rect x="13" y="11.5" width="7.5" height="9" rx="1.5" />
+    <rect x="3.5" y="15.5" width="7.5" height="5" rx="1.5" />
+  </svg>
+);
+
+export const ToolsIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="m12 3.5 8.5 4.5-8.5 4.5L3.5 8 12 3.5Z" />
+    <path d="m3.5 12 8.5 4.5 8.5-4.5M3.5 16l8.5 4.5 8.5-4.5" />
+  </svg>
+);
+
+export const ReviewIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="4.5" width="14" height="16" rx="2" />
+    <path d="M9 4.5v-1h6v1M8.8 13l2.3 2.3 4.2-4.6" />
+  </svg>
+);
+
+export const HeatmapIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+    <path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17" />
+    <rect x="9.2" y="9.2" width="5.6" height="5.6" fill="currentColor" stroke="none" />
+  </svg>
+);

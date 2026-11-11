@@ -112,7 +112,7 @@ export function LiveTraffic({
                 key={e.id}
                 // Every column on a wide screen has a fixed width or a share of the row, never "auto", so the
                 // columns line up from row to row and the right-aligned figures form one edge.
-                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem_6rem_7rem_6rem] dense:w-full dense:grid-cols-[3.5rem_minmax(0,1fr)_5.5rem_5rem_6.5rem_6rem] dense:gap-x-3 dense:py-1.5 ${fresh ? "animate-arrive" : ""}`}
+                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 border-b border-rule py-2 text-sm last:border-b-0 lg:grid-cols-[4.5rem_minmax(0,1.5fr)_minmax(0,1fr)_6.5rem_6rem_7rem_6rem] dense:w-full dense:grid-cols-[3.5rem_minmax(0,1fr)_5rem_5rem_6rem_6rem] dense:gap-x-2 2xl:dense:gap-x-3 dense:py-1.5 ${fresh ? "animate-arrive" : ""}`}
               >
                 <time
                   className="order-last whitespace-nowrap font-mono text-xs text-muted lg:order-none"

@@ -5,33 +5,23 @@
 @layer base {
   :root {
     color-scheme: dark;
-    /* Deep obsidian-slate canvas, rich navy cards, and a unified two-tone architectural header band. */
-    --ground: #080d1a;
-    --surface: #0f172a;
-    --header: #17233b;
-    --header-line: #263859;
-    --header-warning: rgb(245 158 11 / 0.16);
-    --header-warning-line: rgb(245 158 11 / 0.4);
-    --header-danger: #17233b;
-    --header-danger-line: #263859;
-    --header-data: #17233b;
-    --header-data-line: #263859;
-    --header-positive: #17233b;
-    --header-positive-line: #263859;
-    --raised: #1e293b;
-    --raised-hover: #29374f;
-    --row-hover: rgb(30 41 59 / 0.65);
-    --scrim: rgb(4 7 15 / 0.78);
+    /* Neutral graphite: the canvas, cards and controls carry no hue, so the only colour on screen is risk. */
+    --ground: #101114;
+    --surface: #17191d;
+    --raised: #202329;
+    --raised-hover: #2a2e35;
+    --row-hover: rgb(32 35 41 / 0.65);
+    --scrim: rgb(6 7 9 / 0.78);
     --danger-fill: #e11d48;
     --danger-fill-hover: #f43f5e;
-    --border: #1e2d47;
-    --rule: #1e293b;
-    --control: #3b4f73;
-    --text: #f8fafc;
-    --text-2: #cbd5e1;
-    --muted: #94a3b8;
-    /* The teal of the ShadowGuard mark: the mark and the focus ring. */
-    --accent: #2dd4bf;
+    --border: #262a31;
+    --rule: #22252b;
+    --control: #4a505b;
+    --text: #f3f4f6;
+    --text-2: #c9cdd4;
+    --muted: #9299a5;
+    /* Ink, not a hue: the ShadowGuard mark, the campus on the map, the open section and the focus ring. */
+    --accent: #f3f4f6;
     /* The main data series, a hue no severity uses, toned down (OKLCH 0.64 0.11 288) so it never
        outshines an alert. Checked with the data-viz palette validator on --surface: within the dark
        lightness band, and colour-blind separation from Moderate blue of ΔE 11 (the old #a78bfa was 5). */
@@ -57,9 +47,9 @@
     --pill-positive-bg: rgb(16 185 129 / 0.12);
     --pill-positive-line: rgb(16 185 129 / 0.25);
     --pill-positive-ink: #34d399;
-    --pill-neutral-bg: rgb(30 42 69 / 0.8);
-    --pill-neutral-line: rgb(58 74 112 / 0.6);
-    --pill-neutral-ink: #cbd5e1;
+    --pill-neutral-bg: rgb(42 46 53 / 0.8);
+    --pill-neutral-line: rgb(74 80 91 / 0.6);
+    --pill-neutral-ink: #c9cdd4;
     /* The heatmap's one hue, stepped by score band. */
     --heat-1: rgb(244 63 94 / 0.14);
     --heat-2: rgb(244 63 94 / 0.36);
@@ -68,32 +58,22 @@
 
   html.light {
     color-scheme: light;
-    /* Cohesive architectural two-tone light mode: cool slate ground, pure white cards, and slate header bands. */
-    --ground: #eef2f6;
+    /* Light mode: a cool grey ground and white cards, as colourless as the dark theme. */
+    --ground: #f3f4f6;
     --surface: #ffffff;
-    --header: #e2e8f0;
-    --header-line: #cbd5e1;
-    --header-warning: #fef3c7;
-    --header-warning-line: #f59e0b;
-    --header-danger: #e2e8f0;
-    --header-danger-line: #cbd5e1;
-    --header-data: #e2e8f0;
-    --header-data-line: #cbd5e1;
-    --header-positive: #e2e8f0;
-    --header-positive-line: #cbd5e1;
-    --raised: #f1f5f9;
-    --raised-hover: #e2e8f0;
-    --row-hover: rgb(241 245 249 / 0.85);
-    --scrim: rgb(15 23 42 / 0.45);
+    --raised: #eceef1;
+    --raised-hover: #e1e4e8;
+    --row-hover: rgb(236 238 241 / 0.85);
+    --scrim: rgb(16 17 20 / 0.45);
     --danger-fill: #e11d48;
     --danger-fill-hover: #be123c;
-    --border: #cbd5e1;
-    --rule: #e2e8f0;
-    --control: #94a3b8;
-    --text: #0f172a;
-    --text-2: #334155;
-    --muted: #64748b;
-    --accent: #0d9488;
+    --border: #d9dce1;
+    --rule: #e6e8ec;
+    --control: #9aa0aa;
+    --text: #121316;
+    --text-2: #3a3e46;
+    --muted: #646a75;
+    --accent: #121316;
     --data: #5b54a8;
     --sev-critical: #e11d48;
     --sev-high: #d97706;
@@ -114,9 +94,9 @@
     --pill-positive-bg: rgb(5 150 105 / 0.1);
     --pill-positive-line: rgb(5 150 105 / 0.28);
     --pill-positive-ink: #047857;
-    --pill-neutral-bg: rgb(226 232 240 / 0.9);
-    --pill-neutral-line: rgb(148 163 184 / 0.65);
-    --pill-neutral-ink: #334155;
+    --pill-neutral-bg: rgb(225 228 232 / 0.9);
+    --pill-neutral-line: rgb(154 160 170 / 0.65);
+    --pill-neutral-ink: #3a3e46;
     --heat-1: rgb(225 29 72 / 0.12);
     --heat-2: rgb(225 29 72 / 0.28);
     --heat-3: rgb(225 29 72 / 0.5);
@@ -179,16 +159,6 @@
   html.light {
     --ground: #ffffff;
     --surface: #ffffff;
-    --header: #e5e7eb;
-    --header-line: #9ca3af;
-    --header-warning: #f3f4f6;
-    --header-warning-line: #9ca3af;
-    --header-danger: #f3f4f6;
-    --header-danger-line: #9ca3af;
-    --header-data: #f3f4f6;
-    --header-data-line: #9ca3af;
-    --header-positive: #f3f4f6;
-    --header-positive-line: #9ca3af;
     --raised: #e5e7eb;
     --border: #9ca3af;
     --rule: #d1d5db;
@@ -204,7 +174,7 @@
     --negative: #be123c;
     --warning: #b45309;
     --positive: #047857;
-    --accent: #0f766e;
+    --accent: #000000;
     --data: #6d28d9;
   }
 

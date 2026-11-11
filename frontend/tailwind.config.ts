@@ -14,18 +14,6 @@ const config: Config = {
       scrim: "var(--scrim)",
       ground: "var(--ground)",
       surface: "var(--surface)",
-      header: {
-        DEFAULT: "var(--header)",
-        line: "var(--header-line)",
-        warning: "var(--header-warning)",
-        "warning-line": "var(--header-warning-line)",
-        danger: "var(--header-danger)",
-        "danger-line": "var(--header-danger-line)",
-        data: "var(--header-data)",
-        "data-line": "var(--header-data-line)",
-        positive: "var(--header-positive)",
-        "positive-line": "var(--header-positive-line)",
-      },
       raised: "var(--raised)",
       "raised-hover": "var(--raised-hover)",
       "row-hover": "var(--row-hover)",
@@ -82,7 +70,7 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-public-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-instrument-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["var(--font-plex-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       keyframes: {

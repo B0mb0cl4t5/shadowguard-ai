@@ -4,14 +4,8 @@ import { PanelBoundary } from "./panel-boundary";
 
 export type PanelTone = "accent" | "alert" | "warning" | "danger" | "data" | "positive";
 
-const HEADER_STYLE: Record<PanelTone, { band: string; mark: string }> = {
-  accent: { band: "border-header-line bg-header", mark: "bg-accent" },
-  alert: { band: "border-header-warning-line bg-header-warning", mark: "bg-sev-high" },
-  warning: { band: "border-header-line bg-header", mark: "bg-sev-high" },
-  danger: { band: "border-header-line bg-header", mark: "bg-sev-critical" },
-  data: { band: "border-header-line bg-header", mark: "bg-data" },
-  positive: { band: "border-header-line bg-header", mark: "bg-positive" },
-};
+/** Only pending work marks its panel; every other tone is kept so callers still say what a panel is about. */
+const MARK: Partial<Record<PanelTone, string>> = { alert: "bg-sev-high" };
 
 export function Card({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={`rounded-lg border border-line bg-surface ${className}`} {...props} />;
@@ -22,7 +16,7 @@ export function SubCard({ className = "", ...props }: HTMLAttributes<HTMLDivElem
   return <div className={`rounded-md border border-rule bg-ground ${className}`} {...props} />;
 }
 
-/** A titled grid panel. `note` says what the panel's data is; `tone` highlights its header band. */
+/** A titled grid panel. `note` says what the panel's data is; `tone` says what it is about; pending work (`alert`) gets a mark. */
 export function Panel({
   id,
   title,
@@ -42,23 +36,23 @@ export function Panel({
   className?: string;
   bodyClassName?: string;
 }) {
-  const headerTone = HEADER_STYLE[tone];
+  const mark = MARK[tone];
   return (
     // On the one-screen Overview (`dense:`) a panel takes its share of the window: tighter padding, and
     // the note gives way to the content (it's still read out by screen readers).
-    <section id={id} className={`flex min-w-0 scroll-mt-4 flex-col overflow-hidden rounded-lg border border-line bg-surface dense:min-h-0 ${className}`}>
-      <header className={`flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b px-5 py-3.5 dense:flex-nowrap dense:items-center dense:px-4 dense:py-2 ${headerTone.band}`}>
+    <section id={id} className={`flex min-w-0 scroll-mt-20 flex-col overflow-hidden rounded-lg border border-line bg-surface dense:min-h-0 ${className}`}>
+      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-5 pt-4 dense:flex-nowrap dense:items-center dense:px-4 dense:pt-2.5">
         <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <span className={`h-4 w-1.5 shrink-0 rounded-full ${headerTone.mark}`} aria-hidden />
-            <h2 className="text-md font-semibold text-ink dense:truncate dense:text-base">{title}</h2>
+          <div className="flex items-center gap-2">
+            {mark && <span className={`h-2 w-2 shrink-0 rounded-full ${mark}`} aria-hidden />}
+            <h2 className="text-base font-semibold text-ink dense:truncate">{title}</h2>
           </div>
-          {note && <p className="mt-1 pl-4 text-sm text-ink2 dense:sr-only">{note}</p>}
+          {note && <p className="mt-0.5 text-sm text-muted dense:sr-only">{note}</p>}
         </div>
         {/* On one screen a small action button doesn't make the header taller than its title. */}
         {action && <div className="dense:-my-1 dense:shrink-0">{action}</div>}
       </header>
-      <div className={`min-w-0 flex-1 p-5 ${bodyClassName} dense:flex dense:min-h-0 dense:flex-col dense:px-4 dense:pb-2 dense:pt-1.5`}>
+      <div className={`min-w-0 flex-1 px-5 pb-5 pt-4 ${bodyClassName} dense:flex dense:min-h-0 dense:flex-col dense:px-4 dense:pb-2 dense:pt-1.5`}>
         <PanelBoundary label={title}>{children}</PanelBoundary>
       </div>
     </section>
