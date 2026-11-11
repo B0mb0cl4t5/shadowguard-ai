@@ -13,7 +13,7 @@ Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), 
 
 1. **Sign in as an admin.** *Simulate burst* and the *Review* button only appear for admins. For a recording, setting `DEMO_SIGN_IN=admin` on Vercel adds a one-click *Open the demo* button. Anyone with the link can then sign in, so delete it and redeploy straight after (see [`DEPLOYMENT.md`](../DEPLOYMENT.md)).
 2. **Use a window at least 1280 × 740 at 100% zoom,** so *Fit to screen* holds the whole Overview without scrolling.
-3. **Have a block proposal waiting.** The *Remediation and reviews* tab should show a pending count. If it doesn't, run the surge from the live-demo section of `DEPLOYMENT.md` (`simulate_live.py --surge`) and wait for a department to reach Critical.
+3. **Have a block proposal waiting.** *Reviews* in the left rail should show a pending count. If it doesn't, run the surge from the live-demo section of `DEPLOYMENT.md` (`simulate_live.py --surge`) and wait for a department to reach Critical.
 4. **Check how policies are read on the live site.** Slides 4 and 6 say "Rules + Gemini". Until `GEMINI_API_KEY` is set on Vercel, the live site reads policies with the rules alone. Either set the key or say "rules, and Gemini when a key is set", as the speaker notes do.
 5. **Keep the survey source to hand.** Slide 3 quotes Microsoft and LinkedIn's [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/).
 
@@ -32,7 +32,7 @@ Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), 
 | 5:00–5:30 | 7 · How it works | Score the exposure, then let a person decide | Exposure = posture × sensitivity × usage. Bands: Low under 30, Moderate 30+, High 50+, Critical 70+. High or Critical files a ticket and a Teams nudge; Critical queues a block proposal. Nothing is blocked automatically. |
 | 5:30–6:30 | 8 · Security and compliance | Built as a security product first | Small supply chain, OWASP Top 10 mapped in `SECURITY.md`, PDPA (Act 709) sections 8, 9, 10 and 129 per vendor, and full keyboard and screen-reader paths. |
 | 6:30–7:30 | 9 · Performance | Fast enough to watch the network live | Live feed every 4 s, full summary every 8 s while traffic arrives, 0.2–0.5 s reads, 240 reads a minute per client, 90 days of raw telemetry, Teams nudges only after the commit. |
-| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 73 frontend tests and 167 backend tests, plus npm audit and pip-audit. |
+| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 79 frontend tests and 167 backend tests, plus npm audit and pip-audit. |
 | 8:30–9:30 | 11 · Roadmap | From one campus to every university | Now: what is live. Next: MCP server for Gemini Enterprise, firewall push, single sign-on, per-university weights. Later: in-browser coaching, SIEM sync, multi-campus workspaces. |
 | 9:30–10:00 | 12 · Close | Try ShadowGuard live | Live URL, repository and QR code. Take questions. |
 
@@ -48,10 +48,10 @@ Start signed in as an admin on the Overview, with *Fit to screen* on.
 | 0:05–0:15 | Show the Overview in *Fit to screen*. | "Every block fits one screen: the traffic map, live traffic, block proposals, the 14-day trend, severity, departments and the most exposed tools." |
 | 0:15–0:30 | Hover, then click a region on the traffic map. | "Each region shows the real bytes out and in, and which tools sent them." |
 | 0:30–0:55 | Click a tool name to open the vendor drawer. Optionally press *Fetch the latest policy*. | "Every answer about this vendor quotes its own policy. Here are the PDPA checks, and the diff from when GradeSync rewrote its policy." |
-| 0:55–1:10 | Open the *Tool exposure* tab and sort by severity. | "The full list, sortable, with the departments affected." |
-| 1:10–1:30 | Click *Simulate burst* in the header. | "New telemetry arrives. Each event travels an arc on the map and lands in Live traffic within seconds." |
-| 1:30–1:50 | Open *Remediation and reviews*, press *Review* on a proposal to show the dialog, then close it with *Cancel*. In the export panel, pick *FortiGate CLI* or *Squid ACL* and press *Download rule*. | "Nothing is blocked until an admin approves it here, and the approved list exports straight to the firewall." |
-| 1:50–2:00 | Go back to the Overview. | "Discover, read, score, respond, in one place." |
+| 0:55–1:10 | Open *Tools* in the left rail and sort by severity. | "The full list, sortable, with the departments affected." |
+| 1:10–1:30 | Go back to *Overview* and click *Simulate burst* in the top bar. | "New telemetry arrives. Each event travels an arc on the map and lands in Live traffic within seconds." |
+| 1:30–1:50 | Open *Reviews* in the left rail, press *Review* on a proposal to show the dialog, then close it with *Cancel*. In the export panel, pick *FortiGate CLI* or *Squid ACL* and press *Download rule*. | "Nothing is blocked until an admin approves it here, and the approved list exports straight to the firewall." |
+| 1:50–2:00 | Go back to *Overview* in the left rail. | "Discover, read, score, respond, in one place." |
 
 Leave the proposal undecided in the demo. Approving or dismissing it is recorded in the audit log and can't be undone, and it takes the proposal out of the queue for the next run.
 
@@ -75,7 +75,7 @@ Leave the proposal undecided in the demo. Approving or dismissing it is recorded
 | Raw telemetry kept | 90 days | `telemetry_retention_days` in `backend/shadowguard/config.py`; pruned by `backend/scripts/prune_telemetry.py` |
 | Dashboard reads | About 0.2 to 0.5 s | Measured on 5 November 2026, after moving the functions from iad1 to sin1 next to the Neon database |
 | Gemini model | `gemini-2.5-flash` | `DEFAULT_MODEL` in `backend/shadowguard/gemini.py` |
-| Tests | 73 frontend; 167 backend, 19 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend pytest suite. Run locally on 10 November 2026: 73 of 73 frontend pass; 148 backend pass and the 19 database tests skip without a test database |
+| Tests | 79 frontend; 167 backend, 19 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend pytest suite. Frontend run locally on 11 November 2026: 79 of 79 pass. Backend run locally on 10 November 2026: 148 pass and the 19 database tests skip without a test database |
 | Survey figures | 75% of knowledge workers use AI at work; 78% of AI users bring their own tools | Microsoft and LinkedIn, [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/), 31,000 people in 31 countries |
 
 ---

@@ -133,7 +133,7 @@ python -c "import getpass, hashlib; print(hashlib.sha256(getpass.getpass('Key: '
 SELECT at, actor_role, action, target FROM audit_log WHERE actor_key = '<fingerprint>' ORDER BY at DESC;
 ```
 
-Sign-ins are in Vercel's runtime logs: search for `[auth]` (failed attempts, and every demo sign-in). Review any block decisions made in the window under *Remediation and reviews*; blocks aren't pushed to a firewall automatically, so reverse at the proxy anything that wasn't yours.
+Sign-ins are in Vercel's runtime logs: search for `[auth]` (failed attempts, and every demo sign-in). Review any block decisions made in the window under *Reviews* (Remediation and reviews); blocks aren't pushed to a firewall automatically, so reverse at the proxy anything that wasn't yours.
 
 **Tell the right people.** Report it to the university's IT security lead and data protection officer: what leaked, when, what it could reach, and what the audit log shows. Whether it is a personal data breach is the DPO's call. ShadowGuard holds pseudonymous IDs, department names and traffic metadata, never content; Malaysia's PDPA, as amended in 2024, requires notifying the Personal Data Protection Commissioner of a personal data breach, and the people affected where it may cause them significant harm, on the timelines its guidelines set.
 
