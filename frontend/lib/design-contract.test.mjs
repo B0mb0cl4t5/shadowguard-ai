@@ -185,6 +185,20 @@ test("a block is never reported until the server has answered", () => {
   assert.ok(saved < dialog.text.indexOf("onClose();\n    } catch"));
 });
 
+test("the drawer proposes a block but never decides one, and reports it only once stored", () => {
+  const drawer = files.find((f) => f.name === "components/vendor-drawer.tsx");
+  assert.doesNotMatch(drawer.text, /decideRemediation/, "a block is decided in the review dialog only");
+  const sent = drawer.text.indexOf("await proposeBlock");
+  assert.ok(sent > 0);
+  assert.ok(sent < drawer.text.indexOf("onSent(department, id);"));
+  // The confirmation is raised from the form's onSent, which runs only after the server answered.
+  const handler = drawer.text.slice(drawer.text.indexOf("onSent={(department, id) => {"));
+  assert.match(handler.slice(0, handler.indexOf("/>")), /title: "Block proposed"/);
+  assert.equal(drawer.text.split('"Block proposed"').length, 2, "one confirmation, in one place");
+  // If the picked department stops being proposable, the form waits for a new choice instead of switching.
+  assert.match(drawer.text, /departments\.some\(\(d\) => d\.department === picked\) \? picked : ""/);
+});
+
 test("a list row's compare button sits beside its open button, not inside it", () => {
   const panel = files.find((f) => f.name === "components/apps-panel.tsx");
   const row = panel.text.slice(panel.text.indexOf('<ul className="-mx-1 md:hidden">'), panel.text.indexOf("{/* Table:"));

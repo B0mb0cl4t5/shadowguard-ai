@@ -115,6 +115,14 @@ def pair_state(conn: psycopg.Connection, app_id: int, department_id: int) -> Row
     ).fetchone()
 
 
+def pair_exposure(conn: psycopg.Connection, app_id: int, department_id: int) -> Row | None:
+    """The pair's current score, severity and status, or None if the tool was never seen in that department."""
+    return conn.execute(
+        "SELECT exposure_score, severity, status FROM app_exposure WHERE app_id = %s AND department_id = %s",
+        (app_id, department_id),
+    ).fetchone()
+
+
 def exposure_severity(conn: psycopg.Connection, app_id: int, department_id: int) -> str | None:
     """The pair's stored severity, read before a rescore overwrites it."""
     row = conn.execute(

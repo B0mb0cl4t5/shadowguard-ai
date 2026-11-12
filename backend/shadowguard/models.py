@@ -127,5 +127,28 @@ class DecisionRequest(StrictModel):
         return "".join(ch for ch in v if ch.isprintable())
 
 
+class BlockProposalRequest(StrictModel):
+    """An administrator proposing a block by hand. It only queues the proposal; the decision is separate."""
+
+    department: str = Field(min_length=2, max_length=80)
+    reason: str = Field(min_length=10, max_length=300)
+
+    @field_validator("department")
+    @classmethod
+    def _valid_department(cls, v: str) -> str:
+        if not DEPARTMENT_RE.fullmatch(v):
+            raise ValueError("department contains unsupported characters")
+        return v
+
+    @field_validator("reason")
+    @classmethod
+    def _printable(cls, v: str) -> str:
+        # The reason is stored in the action's detail and shown to the deciding admin, so it stays one clean line.
+        cleaned = "".join(ch for ch in " ".join(v.split()) if ch.isprintable())
+        if len(cleaned) < 10:
+            raise ValueError("reason must say why, in at least 10 characters")
+        return cleaned
+
+
 Severity = Literal["critical", "high", "moderate", "low"]
 SortKey = Literal["exposure", "users", "last_seen", "name"]

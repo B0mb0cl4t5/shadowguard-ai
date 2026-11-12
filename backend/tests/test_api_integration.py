@@ -156,6 +156,76 @@ def test_admin_decision_flow_and_double_decision_conflict(client, seeded_db):
                        headers=headers("admin")).status_code == 404
 
 
+def _unproposed_pair(client):
+    """A tool and department with open exposure and no block proposal waiting, from the seeded dashboard."""
+    d = client.get("/api/v1/dashboard", headers=headers("viewer")).json()
+    waiting = {(x["app"], x["department"]) for x in d["remediations"]
+               if x["action_type"] == "block_domain" and x["status"] == "pending_approval"}
+    for app in d["apps"]:
+        for dept in app["departments"]:
+            if dept["status"] == "open" and (app["name"], dept["department"]) not in waiting:
+                return app, dept["department"]
+    raise AssertionError("the seed has no open pair without a pending proposal")
+
+
+def test_admin_proposes_a_block_by_hand_and_it_waits_for_a_decision(client, seeded_db):
+    import psycopg
+
+    app, department = _unproposed_pair(client)
+    before = client.get("/api/v1/dashboard", headers=headers("viewer")).json()["kpis"]["pending_approvals"]
+    body = {"department": department, "reason": "Staff are pasting draft exam papers into it."}
+    r = client.post(f"/api/v1/apps/{app['id']}/block-proposals", json=body, headers=headers("admin"))
+    assert r.status_code == 201
+    made = r.json()
+    assert made["status"] == "pending_approval" and made["app"] == app["name"] and made["department"] == department
+
+    d = client.get("/api/v1/dashboard", headers=headers("viewer")).json()
+    assert d["kpis"]["pending_approvals"] == before + 1
+    row = next(x for x in d["remediations"] if x["id"] == made["id"])
+    assert row["action_type"] == "block_domain" and row["status"] == "pending_approval" and row["requires_approval"]
+    assert row["decided_by"] is None and "Staff are pasting draft exam papers into it." in row["detail"]
+    # Proposing changes nothing else: the tool is still open in that department until someone approves.
+    still = next(a for a in d["apps"] if a["id"] == app["id"])
+    assert next(x for x in still["departments"] if x["department"] == department)["status"] == "open"
+
+    with psycopg.connect(seeded_db) as conn:
+        audit = conn.execute("SELECT actor_role, action, target FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()
+    assert audit == ("admin", "remediation.propose", f"app:{app['id']}")
+
+    # One proposal per tool and department at a time.
+    again = client.post(f"/api/v1/apps/{app['id']}/block-proposals", json=body, headers=headers("admin"))
+    assert again.status_code == 409 and "already waiting" in again.json()["detail"]
+
+    # It is decided like any other proposal, and only then is the exposure mitigated.
+    r = client.post(f"/api/v1/remediations/{made['id']}/decision", json={"decision": "approve", "note": "agreed"},
+                    headers=headers("admin"))
+    assert r.status_code == 200 and r.json()["status"] == "approved"
+    after = next(a for a in client.get("/api/v1/apps", headers=headers("viewer")).json()["apps"]
+                 if a["id"] == app["id"])
+    assert next(x for x in after["departments"] if x["department"] == department)["status"] == "mitigated"
+    # Nothing is left to block there, so a second proposal is refused.
+    done = client.post(f"/api/v1/apps/{app['id']}/block-proposals", json=body, headers=headers("admin"))
+    assert done.status_code == 409 and "mitigated" in done.json()["detail"]
+
+
+def test_block_proposal_refuses_what_it_cannot_place(client, seeded_db):
+    app, department = _unproposed_pair(client)
+    reason = "Seen in the exam office again this week."
+    post = lambda app_id, json: client.post(f"/api/v1/apps/{app_id}/block-proposals", json=json,  # noqa: E731
+                                            headers=headers("admin"))
+    assert post(99999, {"department": department, "reason": reason}).status_code == 404
+    assert post(app["id"], {"department": "No Such Department", "reason": reason}).status_code == 404
+    for bad in [{"department": department, "reason": "too short"},
+                {"department": department},
+                {"department": "<script>", "reason": reason},
+                {"department": department, "reason": reason, "status": "approved"},
+                {"department": department, "reason": "x" * 301}]:
+        assert post(app["id"], bad).status_code == 422, bad
+    # None of those attempts queued anything.
+    d = client.get("/api/v1/dashboard", headers=headers("viewer")).json()
+    assert d["kpis"]["pending_approvals"] == 3
+
+
 def test_analyse_with_injection_marks_vendor_unverified(client, seeded_db):
     vendor = client.get("/api/v1/vendors/4", headers=headers("viewer")).json()  # DeckGenie, verified
     assert vendor["verification_status"] == "verified"

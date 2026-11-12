@@ -215,6 +215,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     setSelected(null);
   }, [openTab]);
 
+  const ownProposals = useRef(new Set<number>());
+
   // Say what changed when a poll brings it, so the page doesn't mutate silently under
   // the user. Each change is reported once, against the data from the previous poll.
   useEffect(() => {
@@ -234,7 +236,10 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
     }
 
     const wasPending = new Set(previous.remediations.filter((r) => r.status === "pending_approval").map((r) => r.id));
-    const fresh = data.remediations.filter((r) => r.status === "pending_approval" && !wasPending.has(r.id)).length;
+    // A proposal this admin just sent from the drawer was confirmed there, so it isn't announced again.
+    const fresh = data.remediations.filter(
+      (r) => r.status === "pending_approval" && !wasPending.has(r.id) && !ownProposals.current.has(r.id),
+    ).length;
     if (fresh > 0) {
       toast({
         title: fresh === 1 ? "New block proposal" : `${fresh} new block proposals`,
@@ -787,6 +792,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           }}
           onClose={() => setSelected(null)}
           onChanged={() => void refresh()}
+          onProposed={(id) => ownProposals.current.add(id)}
+          onToast={toast}
         />
       )}
 

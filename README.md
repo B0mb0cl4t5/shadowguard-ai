@@ -76,7 +76,7 @@ shadowguard-ai/
 │   │   ├── notify.py            Teams webhook nudges
 │   │   ├── config.py · db.py
 │   ├── scripts/                 build_seed · init_db · migrate_db · create_api_key · simulate_live · real_catalog · prune_telemetry
-│   └── tests/                   167 tests (148 unit/security + 19 PostgreSQL integration)
+│   └── tests/                   172 tests (151 unit/security + 21 PostgreSQL integration)
 ├── collector/
 │   ├── shadowguard_collector.py Laptop proxy that reports visits to AI tools (standard library only)
 │   ├── campus_log_shipper.py    Squid / FortiGate proxy log shipper with staff-directory department lookup
@@ -85,7 +85,7 @@ shadowguard-ai/
 ├── frontend/                    Next.js 15 (App Router, TypeScript, Tailwind) → Vercel
 │   ├── app/                     Pages + server route handlers (the browser never sees an API key)
 │   ├── components/              Screens and in-house charts, plus ui/ for the shared card, table, badge, button and input
-│   ├── lib/                     session signing, PBKDF2, backend client, guards, theme state, 79 unit & UI design-contract tests
+│   ├── lib/                     session signing, PBKDF2, backend client, guards, theme state, 80 unit & UI design-contract tests
 │   ├── middleware.ts            Auth gate + per-request nonce CSP
 │   └── public/                  PWA icons + service worker
 ├── database/
@@ -214,6 +214,7 @@ Also:
 - **Malaysian PDPA (Act 709) statutory audit drawer:** every vendor drawer and dry-run policy test maps extracted clauses directly to **Section 9** (Security Principle — AI model training & opt-out), **Section 8** (Disclosure Principle — third-party sharing), **Section 10** (Retention Principle — storage duration), and **Section 129** (Cross-Border Transfer outside Malaysia), with structured Section chips, status icons, and direct navigation to review pending block decisions.
 - **Firewall rule & PDPA compliance exporter:** from *Reviews* in the section rail or **⌘K / Ctrl K**, export admin-approved domain blocks (with unapproved proposals safely commented out as staged) as a **FortiGate CLI** webfilter blocklist (`shadowguard-fortigate-blocklist.conf`) or **Squid proxy** `dstdomain` ACL (`shadowguard-squid-blocked.acl`), or download a spreadsheet-safe **PDPA compliance audit CSV** (`shadowguard-pdpa-audit.csv`).
 - **1-click live traffic burst (Admin):** trigger 5 realistic campus telemetry events straight from the top bar (**Simulate burst**) or **⌘K / Ctrl K** through `/api/v1/telemetry` to demonstrate real-time detection and map arcs without needing a separate terminal.
+- **Admin-initiated block proposals:** in addition to automatic proposals when a department reaches Critical exposure, an administrator can propose a block for any unmitigated department directly from the vendor drawer with a required rationale, immediately queuing it for review without executing it autonomously.
 - **No UI libraries:** the command menu, word diff, charts, map, animations and table sorting are written in-house, so the frontend has no UI dependencies beyond React and Next.js, and `npm audit` stays at zero. `frontend/lib/design-contract.test.mjs` checks the UI rules, including that no animation loops on its own.
 
 ## API
@@ -229,6 +230,7 @@ All routes except `/api/health` need an `X-API-Key` header.
 | GET | `/api/v1/live?after_id=&limit=` newest traffic and a revision token, polled every few seconds (no user ids) | viewer, admin |
 | POST | `/api/v1/telemetry` `{events:[{observed_at, department, user_hash, domain, bytes_out, bytes_in, dest_ip, source}]}` | ingest, admin |
 | POST | `/api/v1/vendors/{id}/analyze` `{policy_text?, persist?}` or `{fetch:true}` (`persist:false` = dry run, nothing saved) | admin |
+| POST | `/api/v1/apps/{id}/block-proposals` `{department, reason}` queues a block proposal; never blocks by itself | admin |
 | POST | `/api/v1/remediations/{id}/decision` `{decision:"approve"\|"reject", note?}` | admin |
 | POST | `/api/v1/pipeline/recompute` | admin |
 | POST | `/api/v1/rate-limit` `{checks:[{bucket, limit, window_seconds}]}` sign-in limits shared by every instance; buckets are SHA-256 digests, never IPs | viewer, admin |

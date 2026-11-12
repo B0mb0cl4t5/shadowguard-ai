@@ -34,7 +34,7 @@ To keep the software supply chain minimal (OWASP A06 in [`SECURITY.md`](../SECUR
 - **[`components/ui/button.tsx`](../frontend/components/ui/button.tsx):** `<Button>` (`primary`, `secondary`, `ghost`, `outline`, `danger`, `bare`) and `<Segmented>` control, with $44\times 44\text{ px}$ coarse-pointer touch targets (`[@media(pointer:coarse)]:min-h-11`).
 - **[`components/ui/card.tsx`](../frontend/components/ui/card.tsx):** `<Panel>` (wrapped in an error boundary `<PanelBoundary>` so one failed chart cannot blank the dashboard) and `<SubCard>`.
 - **[`components/ui/badge.tsx`](../frontend/components/ui/badge.tsx):** `<Badge>` and `<SeverityBadge>` (always pairs colour with text and/or numeric score).
-- **[`components/ui/input.tsx`](../frontend/components/ui/input.tsx):** `<Input>` and `<Textarea>` with consistent `focus-visible:ring-2 focus-visible:ring-accent`.
+- **[`components/ui/input.tsx`](../frontend/components/ui/input.tsx):** `<Input>`, `<Select>`, and `<Textarea>` with consistent `focus-visible:ring-2 focus-visible:ring-accent`.
 - **[`components/ui/table.tsx`](../frontend/components/ui/table.tsx):** Accessible table primitives (`<Table>`, `<TableHeader>`, `<TableBody>`, `<TableRow>`, `<TableHead>`, `<TableCell>`).
 - **[`components/ui/tabs.tsx`](../frontend/components/ui/tabs.tsx):** The section rail (a left rail from `lg`, a bottom bar on phones): an ARIA tablist with arrow-key navigation and URL hash syncing (`#overview`, `#tools`, `#reviews`, `#departments`).
 - **[`components/icons.tsx`](../frontend/components/icons.tsx):** Single-style 1.75px stroke SVG icons accepting `size` and `className`.

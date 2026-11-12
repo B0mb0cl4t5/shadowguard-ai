@@ -15,6 +15,25 @@ export async function decideRemediation(id: number, decision: "approve" | "rejec
   }
 }
 
+/** Queues a block proposal for one tool in one department and returns its id. Deciding it stays in the review dialog. */
+export async function proposeBlock(appId: number, department: string, reason: string): Promise<number> {
+  const res = await fetch(`/api/apps/${appId}/block-proposals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ department, reason }),
+    signal: AbortSignal.timeout(TIMEOUT_MS.request),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(body.detail ?? `Request failed (${res.status})`);
+  }
+  const made = (await res.json().catch(() => ({}))) as { id?: unknown };
+  if (typeof made.id !== "number") {
+    throw new Error("The server did not confirm the proposal. Check the review queue before sending it again.");
+  }
+  return made.id;
+}
+
 export async function simulateTrafficBurst(): Promise<{ accepted: number }> {
   const res = await fetch("/api/simulate", {
     method: "POST",

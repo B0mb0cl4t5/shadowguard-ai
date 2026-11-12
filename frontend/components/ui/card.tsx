@@ -64,9 +64,9 @@ export function EmptyState({ children }: { children: ReactNode }) {
 }
 
 /** An inline error or status message. */
-export function Notice({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Notice({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <p role="alert" className={`rounded-md border border-tone-danger-line bg-tone-danger px-3 py-2 text-sm text-tone-danger-ink ${className}`}>
+    <p id={id} role="alert" className={`rounded-md border border-tone-danger-line bg-tone-danger px-3 py-2 text-sm text-tone-danger-ink ${className}`}>
       {children}
     </p>
   );

@@ -6,6 +6,7 @@ import { relativeTime, titleCase, type Tone } from "@/lib/format";
 import { evaluatePdpa } from "@/lib/pdpa";
 import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
 import type { Evidence, Factor, PolicyAnalysis, Remediation, Role, ShadowApp, VendorDetail } from "@/lib/types";
+import { proposeBlock } from "@/lib/actions";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
 import { AlertIcon, BlockIcon, CheckIcon, ChevronIcon, CloseIcon, InfoIcon, QuoteIcon, RefreshIcon } from "./icons";
@@ -13,7 +14,7 @@ import { PolicyChange } from "./policy-diff";
 import { Badge, SeverityBadge, VerificationBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Notice, SubCard } from "./ui/card";
-import { Textarea } from "./ui/input";
+import { Select, Textarea } from "./ui/input";
 import { Skeleton } from "./ui/skeleton";
 
 /** Which extracted answer each rubric component is based on. */
@@ -73,6 +74,8 @@ export function VendorDrawer({
   onReview,
   onClose,
   onChanged,
+  onProposed,
+  onToast,
 }: {
   app: ShadowApp;
   role: Role;
@@ -87,18 +90,39 @@ export function VendorDrawer({
   onReview: (item: Remediation) => void;
   onClose: () => void;
   onChanged: () => void;
+  /** A proposal sent from here was stored under this id. */
+  onProposed: (id: number) => void;
+  onToast: (props: { title?: string; description?: string; tone?: "success" | "warning" | "danger" | "info"; duration?: number }) => void;
 }) {
   const [vendor, setVendor] = useState<VendorDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const pendingBlocks = blocks.filter((b) => b.status === "pending_approval");
+  // A block can be proposed where the tool is still open and no proposal is already waiting.
+  const proposable = app.departments.filter((d) => d.status === "open" && !pendingBlocks.some((b) => b.department === d.department));
+  const showForm = proposing && proposable.length > 0;
   const closeRef = useRef<HTMLButtonElement>(null);
+  const proposeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   useFocusTrap(panelRef);
 
   // The dashboard re-renders every few seconds, so read this from a ref and leave focus alone.
+  // Escape backs out of the proposal form first, and closes the drawer only when the form is shut.
   const latestClose = useRef(onClose);
-  latestClose.current = onClose;
+  latestClose.current = showForm ? () => setProposing(false) : onClose;
+
+  // When the form shuts, focus goes back to the button that opened it, or to Close once a proposal is sent.
+  const formWasOpen = useRef(false);
+  const focusAfterForm = useRef<"propose" | "close">("propose");
+  useEffect(() => {
+    if (formWasOpen.current && !showForm) {
+      setProposing(false);
+      ((focusAfterForm.current === "propose" ? proposeRef.current : null) ?? closeRef.current)?.focus();
+      focusAfterForm.current = "propose";
+    }
+    formWasOpen.current = showForm;
+  }, [showForm]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -256,19 +280,46 @@ export function VendorDrawer({
         </div>
 
         {role === "admin" && (
-          <footer className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-line bg-surface px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
-            <BlockStatus blocks={blocks} unread={!!vendor && vendor.policy_history.length === 0} />
-            <div className="flex flex-wrap gap-2">
-              {pendingBlocks[0] && (
-                <Button variant="secondary" onClick={() => onReview(pendingBlocks[0]!)}>
-                  Review proposal
-                </Button>
-              )}
-              <Button variant="primary" onClick={() => void reanalyse("fetch")} disabled={busy || !vendor?.policy_url}>
-                <RefreshIcon size={15} className={busy ? "animate-spin" : ""} />
-                {busy ? "Reading…" : "Fetch the latest policy"}
-              </Button>
-            </div>
+          <footer className="flex max-h-[70%] shrink-0 flex-wrap items-center gap-x-4 gap-y-3 overflow-y-auto border-t border-line bg-surface px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+            {showForm ? (
+              <ProposeBlockForm
+                app={app}
+                departments={proposable}
+                onCancel={() => setProposing(false)}
+                onSent={(department, id) => {
+                  focusAfterForm.current = "close";
+                  setProposing(false);
+                  onProposed(id);
+                  onChanged();
+                  onToast({
+                    title: "Block proposed",
+                    description: `${app.name} for ${department}. It waits for an administrator's decision.`,
+                    tone: "success",
+                  });
+                }}
+              />
+            ) : (
+              <>
+                <BlockStatus blocks={blocks} unread={!!vendor && vendor.policy_history.length === 0} canPropose={proposable.length > 0} />
+                <div className="flex flex-wrap gap-2">
+                  {pendingBlocks[0] && (
+                    <Button variant="secondary" onClick={() => onReview(pendingBlocks[0]!)}>
+                      Review proposal
+                    </Button>
+                  )}
+                  {proposable.length > 0 && (
+                    <Button ref={proposeRef} onClick={() => setProposing(true)}>
+                      <BlockIcon size={15} />
+                      Propose block
+                    </Button>
+                  )}
+                  <Button variant="primary" onClick={() => void reanalyse("fetch")} disabled={busy || !vendor?.policy_url}>
+                    <RefreshIcon size={15} className={busy ? "animate-spin" : ""} />
+                    {busy ? "Reading…" : "Fetch the latest policy"}
+                  </Button>
+                </div>
+              </>
+            )}
           </footer>
         )}
       </aside>
@@ -276,12 +327,172 @@ export function VendorDrawer({
   );
 }
 
+const REASON_MIN = 10;
+const REASON_MAX = 300;
+
 /**
- * Where this tool stands on blocking, beside the actions. The drawer never proposes or decides a block
- * itself: the pipeline proposes one when a department's exposure reaches Critical, and an administrator
- * decides it in the review dialog.
+ * An administrator's own block proposal, for a department the pipeline hasn't proposed one for. Sending it
+ * only adds the proposal to the review queue: nothing is blocked here, and the drawer reports the proposal
+ * only after the server has stored it.
  */
-function BlockStatus({ blocks, unread }: { blocks: Remediation[]; unread: boolean }) {
+function ProposeBlockForm({
+  app,
+  departments,
+  onCancel,
+  onSent,
+}: {
+  app: ShadowApp;
+  /** Departments where the tool is still open and no proposal is waiting. Never empty. */
+  departments: ShadowApp["departments"];
+  onCancel: () => void;
+  onSent: (department: string, id: number) => void;
+}) {
+  const [picked, setPicked] = useState(departments[0]?.department ?? "");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const sendRef = useRef<HTMLButtonElement>(null);
+  // The list follows the live data. If the picked department stops being proposable (someone else proposed
+  // it, or it was dealt with), the form says so and waits for a new choice: it never switches by itself.
+  const department = departments.some((d) => d.department === picked) ? picked : "";
+  const only = department !== "" && departments.length === 1 ? departments[0] : undefined;
+  const ready = department !== "" && reason.trim().length >= REASON_MIN;
+
+  // If the choice goes while focus is on a control that just disabled, focus moves to the list to choose again.
+  // Focus that is still inside the form (someone typing a reason) is left where it is.
+  const formRef = useRef<HTMLFormElement>(null);
+  const gone = department === "";
+  useEffect(() => {
+    if (!gone) return;
+    const active = document.activeElement;
+    // A control that has just been disabled still holds focus here; the browser drops it a moment later.
+    if (!formRef.current?.contains(active) || active?.matches(":disabled")) formRef.current?.querySelector("select")?.focus();
+  }, [gone]);
+
+  // Sending disables the controls, which drops focus. After a refusal it goes back to the button pressed.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!busy && refocus.current) {
+      refocus.current = false;
+      sendRef.current?.focus();
+    }
+  }, [busy]);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await proposeBlock(app.id, department, reason.trim());
+      onSent(department, id);
+    } catch (e) {
+      setError(failureMessage(e, "The proposal could not be sent. Nothing has changed."));
+      refocus.current = true;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      ref={formRef}
+      className="w-full"
+      aria-labelledby="propose-title"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready && !busy) void send();
+      }}
+    >
+      <h3 id="propose-title" className="text-sm font-semibold text-ink">
+        Propose a block for {app.name}
+      </h3>
+      <p className="mt-1 text-xs text-muted">
+        This adds a proposal to the review queue. Nothing is blocked until an administrator approves it there.
+      </p>
+
+      {only ? (
+        <p className="mt-3 text-sm text-ink2">
+          Department: <span className="font-medium text-ink">{only.department}</span>{" "}
+          <span className="text-muted">
+            ({titleCase(only.severity)}, <span className="font-mono">{only.score}/100</span>)
+          </span>
+        </p>
+      ) : (
+        <>
+          <label htmlFor="propose-department" className="mt-3 block text-xs font-medium text-ink2">
+            Department
+          </label>
+          <Select
+            id="propose-department"
+            autoFocus
+            value={department}
+            onChange={(e) => {
+              setPicked(e.target.value);
+              setError(null);
+            }}
+            disabled={busy}
+            aria-describedby={department === "" ? "propose-department-gone" : undefined}
+            className="mt-1"
+          >
+            {department === "" && (
+              <option value="" disabled>
+                Choose a department
+              </option>
+            )}
+            {departments.map((d) => (
+              <option key={d.department} value={d.department}>
+                {d.department} ({titleCase(d.severity)}, {d.score}/100)
+              </option>
+            ))}
+          </Select>
+          {department === "" && (
+            <Notice id="propose-department-gone" className="mt-2">
+              A block can no longer be proposed for {picked}: a proposal for it is already waiting, or it has been dealt with. Choose
+              another department, or cancel.
+            </Notice>
+          )}
+        </>
+      )}
+
+      <label htmlFor="propose-reason" className="mt-3 block text-xs font-medium text-ink2">
+        Why block it
+      </label>
+      <Textarea
+        id="propose-reason"
+        autoFocus={!!only}
+        value={reason}
+        onChange={(e) => setReason(e.target.value.slice(0, REASON_MAX))}
+        rows={2}
+        disabled={busy}
+        aria-describedby="propose-reason-help"
+        placeholder="What you saw, and where"
+        className="mt-1"
+      />
+      <p id="propose-reason-help" className="mt-1 flex justify-between gap-3 text-xs text-muted">
+        <span>Shown to whoever decides. At least {REASON_MIN} characters.</span>
+        <span className="shrink-0 whitespace-nowrap font-mono">
+          {reason.length} / {REASON_MAX}
+        </span>
+      </p>
+
+      {error && department !== "" && <Notice className="mt-3">{error}</Notice>}
+
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button ref={sendRef} type="submit" variant="secondary" disabled={!ready || busy}>
+          {busy ? "Sending…" : "Send proposal"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Where this tool stands on blocking, beside the actions. The drawer never decides a block itself: the
+ * pipeline proposes one when a department's exposure reaches Critical, an administrator can propose one
+ * by hand from here, and either way it is decided in the review dialog.
+ */
+function BlockStatus({ blocks, unread, canPropose }: { blocks: Remediation[]; unread: boolean; canPropose: boolean }) {
   const departments = (status: Remediation["status"]) => blocks.filter((b) => b.status === status).map((b) => b.department);
   const pending = departments("pending_approval");
   const approved = departments("approved");
@@ -292,10 +503,11 @@ function BlockStatus({ blocks, unread }: { blocks: Remediation[]; unread: boolea
   else if (approved.length > 0) text = `Blocked at the proxy for ${listOf(approved)}.`;
   else if (rejected.length > 0) text = `A block for ${listOf(rejected)} was dismissed. The tool stays reachable.`;
   else if (unread) text = "This vendor's policy hasn't been read yet.";
+  else if (canPropose) text = "No block proposed. One is proposed automatically at Critical exposure, and you can propose one yourself.";
   else text = "No block proposed. One is proposed automatically when a department's exposure reaches Critical.";
 
   return (
-    <p className="flex min-w-64 flex-1 items-start gap-2 text-xs text-ink2">
+    <p role="status" className="flex min-w-64 flex-1 items-start gap-2 text-xs text-ink2">
       <BlockIcon size={14} className={`mt-0.5 shrink-0 ${pending.length > 0 ? "text-warning" : approved.length > 0 ? "text-negative" : "text-muted"}`} />
       <span>{text}</span>
     </p>

@@ -345,6 +345,36 @@ def decide_remediation(conn: psycopg.Connection, action_id: int, decision: str, 
     return {"id": row["id"], "status": row["status"], "decided_at": row["decided_at"]}
 
 
+def propose_block(conn: psycopg.Connection, app_id: int, department: str, reason: str, actor: str) -> dict:
+    """Queue a block proposal an administrator raised by hand.
+
+    It writes the same pending row the pipeline writes at Critical and nothing else: the tool stays
+    reachable until someone approves the proposal in the review dialog. The pipeline's quiet
+    period after a rejection applies to automatic proposals only, so a person may raise one again.
+    """
+    dept = repo.departments_by_name(conn).get(department.lower())
+    if dept is None:
+        raise NotFound("Department not found")
+    ctx = repo.pair_context(conn, app_id, dept["id"])
+    if ctx is None:
+        raise NotFound("Tool not found")
+    if ctx["approved"]:
+        raise Conflict("This tool is approved for use, so a block cannot be proposed for it")
+    exposure = repo.pair_exposure(conn, app_id, dept["id"])
+    if exposure is None:
+        raise Conflict("This tool has not been seen in that department")
+    if exposure["status"] != "open":
+        raise Conflict(f"This tool's exposure in that department is already {exposure['status']}")
+    detail = (f"Proposed by an administrator ({actor}): block {ctx['app_name']} for {ctx['department']} at the proxy. "
+              f"Exposure {exposure['exposure_score']}/100 ({exposure['severity']}). "
+              f"Reason: {reason.rstrip('.')}. Awaiting admin approval.")
+    action_id = repo.insert_remediation(conn, app_id, dept["id"], repo.current_incident_id(conn, app_id, dept["id"]),
+                                        "block_domain", "pending_approval", True, detail)
+    if action_id is None:
+        raise Conflict("A block proposal for this tool and department is already waiting for review")
+    return {"id": action_id, "status": "pending_approval", "app": ctx["app_name"], "department": ctx["department"]}
+
+
 # --------------------------------------------------------------------------- dashboard
 
 def dashboard(conn: psycopg.Connection) -> dict[str, Any]:

@@ -8,6 +8,7 @@ Route → role matrix (OWASP A01, Broken Access Control):
     GET  /api/v1/vendors/{id}                     viewer, admin
     POST /api/v1/telemetry                        ingest, admin
     POST /api/v1/vendors/{id}/analyze             admin  (persist=false → dry run, no writes)
+    POST /api/v1/apps/{id}/block-proposals        admin  (queues a proposal; never blocks by itself)
     POST /api/v1/remediations/{id}/decision       admin
     POST /api/v1/pipeline/recompute               admin
     POST /api/v1/rate-limit                       viewer, admin  (the dashboard server's shared sign-in limits)
@@ -29,7 +30,8 @@ from . import repository as repo
 from .config import get_settings
 from .db import DatabaseNotConfigured, get_connection
 from .fetcher import FetchError, UnsafeURLError, fetch_policy_text
-from .models import AnalyseRequest, DecisionRequest, RateLimitRequest, Severity, SortKey, TelemetryBatch
+from .models import (AnalyseRequest, BlockProposalRequest, DecisionRequest, RateLimitRequest, Severity, SortKey,
+                     TelemetryBatch)
 from .scoring import severity_for
 from .security import SECURITY_HEADERS, Principal, require_role
 
@@ -213,6 +215,23 @@ def analyse(vendor_id: Id, body: AnalyseRequest, principal: Principal = Depends(
                     "injection_flags": len(result["injection_flags"])})
     result["source"] = source
     return result
+
+
+@app.post("/api/v1/apps/{app_id}/block-proposals", status_code=status.HTTP_201_CREATED)
+def propose_block(app_id: Id, body: BlockProposalRequest, principal: Principal = Depends(admin)):
+    """An administrator queues a block proposal by hand. Deciding it is a separate call, below."""
+    actor = f"admin:{principal.key_fingerprint[:8]}"
+    with get_connection() as conn:
+        try:
+            result = service.propose_block(conn, app_id, body.department, body.reason, actor)
+        except service.NotFound as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
+        except service.Conflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+        repo.audit(conn, principal.role, principal.key_fingerprint, "remediation.propose",
+                   f"app:{app_id}", {"remediation_id": result["id"], "department": result["department"],
+                                     "reason_len": len(body.reason)})
+        return result
 
 
 @app.post("/api/v1/remediations/{action_id}/decision")

@@ -13,7 +13,7 @@ from shadowguard import repository as repo
 from shadowguard.config import _parse_api_keys
 from shadowguard.db import DatabaseNotConfigured, validate_database_url
 from shadowguard.fetcher import UnsafeURLError, html_to_text, validate_url
-from shadowguard.models import DecisionRequest, TelemetryEvent
+from shadowguard.models import BlockProposalRequest, DecisionRequest, TelemetryEvent
 from shadowguard.pipeline import PairState, aggregate, match_domain, plan_response
 from shadowguard.security import AUTH_FAILURES_PER_MINUTE
 from simulate_live import is_safe_api_url
@@ -167,6 +167,18 @@ def test_decision_note_strips_control_characters():
     assert DecisionRequest(decision="approve", note="ok\nFAKE LOG LINE\x1b[31m").note == "okFAKE LOG LINE[31m"
 
 
+def test_block_proposal_reason_is_kept_to_one_clean_line():
+    made = BlockProposalRequest(department="Finance & Bursary",
+                                reason="  Seen again\nFAKE LOG LINE\x1b[31m   this week.  ")
+    assert made.reason == "Seen again FAKE LOG LINE[31m this week."
+    # Padding and control characters don't count toward the minimum.
+    for reason in ["short", " " * 40, "\x00" * 40, "a\n\n\n\n\n\n\n\n\nb"]:
+        with pytest.raises(ValidationError):
+            BlockProposalRequest(department="Finance & Bursary", reason=reason)
+    with pytest.raises(ValidationError):
+        BlockProposalRequest(department="Finance'; DROP TABLE apps;--", reason="A perfectly good reason.")
+
+
 # --- OWASP A01: access control (no DB needed: auth fails before any query) ----
 
 def assert_security_headers(response):
@@ -241,6 +253,23 @@ def test_failed_key_attempts_are_logged_without_the_secret(client, caplog, sent)
 def test_viewer_cannot_approve(client):
     r = client.post("/api/v1/remediations/1/decision", json={"decision": "approve"}, headers=headers("viewer"))
     assert r.status_code == 403
+
+
+def test_only_an_admin_can_propose_a_block(client):
+    body = {"department": "Finance & Bursary", "reason": "Seen in the bursary again this week."}
+    assert client.post("/api/v1/apps/1/block-proposals", json=body).status_code == 401
+    for role in ("viewer", "ingest"):
+        assert client.post("/api/v1/apps/1/block-proposals", json=body, headers=headers(role)).status_code == 403
+
+
+def test_a_proposal_never_blocks_by_itself():
+    """Proposing queues a pending row and stops: the exposure and its incidents change only on approval."""
+    from shadowguard import service
+
+    source = inspect.getsource(service.propose_block)
+    assert '"pending_approval", True' in source
+    for forbidden in ("set_exposure_status", "resolve_incidents", "decide_remediation"):
+        assert forbidden not in source, forbidden
 
 
 # --- OWASP A07: shared sign-in limits -------------------------------------------

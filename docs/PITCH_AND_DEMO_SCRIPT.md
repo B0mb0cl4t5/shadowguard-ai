@@ -32,7 +32,7 @@ Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), 
 | 5:00–5:30 | 7 · How it works | Score the exposure, then let a person decide | Exposure = posture × sensitivity × usage. Bands: Low under 30, Moderate 30+, High 50+, Critical 70+. High or Critical files a ticket and a Teams nudge; Critical queues a block proposal. Nothing is blocked automatically. |
 | 5:30–6:30 | 8 · Security and compliance | Built as a security product first | Small supply chain, OWASP Top 10 mapped in `SECURITY.md`, PDPA (Act 709) sections 8, 9, 10 and 129 per vendor, and full keyboard and screen-reader paths. |
 | 6:30–7:30 | 9 · Performance | Fast enough to watch the network live | Live feed every 4 s, full summary every 8 s while traffic arrives, 0.2–0.5 s reads, 240 reads a minute per client, 90 days of raw telemetry, Teams nudges only after the commit. |
-| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 79 frontend tests and 167 backend tests, plus npm audit and pip-audit. |
+| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 80 frontend tests and 172 backend tests, plus npm audit and pip-audit. |
 | 8:30–9:30 | 11 · Roadmap | From one campus to every university | Now: what is live. Next: MCP server for Gemini Enterprise, firewall push, single sign-on, per-university weights. Later: in-browser coaching, SIEM sync, multi-campus workspaces. |
 | 9:30–10:00 | 12 · Close | Try ShadowGuard live | Live URL, repository and QR code. Take questions. |
 
@@ -75,7 +75,7 @@ Leave the proposal undecided in the demo. Approving or dismissing it is recorded
 | Raw telemetry kept | 90 days | `telemetry_retention_days` in `backend/shadowguard/config.py`; pruned by `backend/scripts/prune_telemetry.py` |
 | Dashboard reads | About 0.2 to 0.5 s | Measured on 5 November 2026, after moving the functions from iad1 to sin1 next to the Neon database |
 | Gemini model | `gemini-2.5-flash` | `DEFAULT_MODEL` in `backend/shadowguard/gemini.py` |
-| Tests | 79 frontend; 167 backend, 19 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend pytest suite. Frontend run locally on 11 November 2026: 79 of 79 pass. Backend run locally on 10 November 2026: 148 pass and the 19 database tests skip without a test database |
+| Tests | 80 frontend; 172 backend, 21 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend pytest suite. Frontend run locally on 12 November 2026: 80 of 80 pass. Backend run locally on 12 November 2026: 151 pass and the 21 database tests skip without a test database |
 | Survey figures | 75% of knowledge workers use AI at work; 78% of AI users bring their own tools | Microsoft and LinkedIn, [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/), 31,000 people in 31 countries |
 
 ---
@@ -103,6 +103,6 @@ If you rehearsed the first version of this deck, these figures changed to match 
 - The bands are High from 50 and Critical from 70 (not 60 and 80), and the formula is posture × sensitivity × usage.
 - "30% of staff use 12+ unapproved AI tools" is gone, because nothing supported it. Slide 3 now uses the Work Trend Index figures above.
 - "Under 200 ms" is now the measured 0.2 to 0.5 s.
-- The backend has 167 tests, not 168.
+- The backend has 172 tests (151 unit/security + 21 PostgreSQL integration).
 - GradeSync Pro is presented as a fictional demo vendor, and the CampusNote AI example is gone.
 - The roadmap has no quarter dates.
