@@ -779,6 +779,12 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
           now={now}
           policiesChangedAt={live.policiesChangedAt}
           exposureWindowDays={data.exposure_window_days}
+          blocks={data.remediations.filter((r) => r.action_type === "block_domain" && r.domain === selected.domain)}
+          // The review dialog and the drawer each trap focus, so the drawer closes before the dialog opens.
+          onReview={(item) => {
+            setSelected(null);
+            setReview(item);
+          }}
           onClose={() => setSelected(null)}
           onChanged={() => void refresh()}
         />

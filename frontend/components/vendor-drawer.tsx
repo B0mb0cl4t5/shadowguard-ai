@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { relativeTime, titleCase } from "@/lib/format";
+import { relativeTime, titleCase, type Tone } from "@/lib/format";
 import { evaluatePdpa } from "@/lib/pdpa";
 import { failureMessage, TIMEOUT_MS } from "@/lib/request-timeout";
-import type { Evidence, Factor, PolicyAnalysis, Role, ShadowApp, VendorDetail } from "@/lib/types";
+import type { Evidence, Factor, PolicyAnalysis, Remediation, Role, ShadowApp, VendorDetail } from "@/lib/types";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
-import { AlertIcon, ChevronIcon, CloseIcon, QuoteIcon, RefreshIcon } from "./icons";
+import { AlertIcon, BlockIcon, CheckIcon, ChevronIcon, CloseIcon, InfoIcon, QuoteIcon, RefreshIcon } from "./icons";
 import { PolicyChange } from "./policy-diff";
 import { Badge, SeverityBadge, VerificationBadge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -24,6 +24,31 @@ const FACTOR_FIELD: Record<string, string> = {
   "Data location": "data_location",
   "Opt-out available": "opt_out",
 };
+
+/** Which score components each PDPA section is judged from, so a reader can trace a verdict back to its clause. */
+const PDPA_BASIS: Record<string, string> = {
+  "s. 8": "Third-party sharing",
+  "s. 9": "Trains on user inputs, Opt-out available",
+  "s. 10": "Data retention",
+  "s. 129": "Data location",
+};
+
+/** A status never rests on colour alone: each tone has its own shape beside the word. */
+const TONE_ICON: Partial<Record<Tone, typeof AlertIcon>> = { danger: AlertIcon, warning: InfoIcon, success: CheckIcon };
+
+/** An extracted answer in reading form: "Yes", "Not stated", "720 days", "US". */
+function answerText(answer: string): string {
+  const a = answer.trim();
+  if (a === "unknown") return "Not stated";
+  if (/^\d+$/.test(a)) return `${a} days`;
+  return a.charAt(0).toUpperCase() + a.slice(1);
+}
+
+/** "Finance", "Finance and Registrar", "Finance, Registrar and Library". */
+function listOf(names: string[]): string {
+  const unique = [...new Set(names)];
+  return unique.length <= 1 ? (unique[0] ?? "") : `${unique.slice(0, -1).join(", ")} and ${unique[unique.length - 1]}`;
+}
 
 /** A clean, low-risk sample, so the jump caused by an injected sentence is obvious on stage. */
 const SAMPLE_POLICY =
@@ -44,6 +69,8 @@ export function VendorDrawer({
   now,
   policiesChangedAt,
   exposureWindowDays,
+  blocks,
+  onReview,
   onClose,
   onChanged,
 }: {
@@ -54,12 +81,17 @@ export function VendorDrawer({
   policiesChangedAt: string | null;
   /** Configured exposure window in days (from backend `EXPOSURE_WINDOW_DAYS`). */
   exposureWindowDays: number;
+  /** Every block action recorded for this tool, any status. */
+  blocks: Remediation[];
+  /** Opens the review dialog, the one place a block is decided. */
+  onReview: (item: Remediation) => void;
   onClose: () => void;
   onChanged: () => void;
 }) {
   const [vendor, setVendor] = useState<VendorDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const pendingBlocks = blocks.filter((b) => b.status === "pending_approval");
   const closeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   useFocusTrap(panelRef);
@@ -200,7 +232,15 @@ export function VendorDrawer({
 
           <IncidentTimeline app={app} now={now} />
 
-          {vendor?.policy_history[0] && <FullPolicy text={vendor.policy_history[0].policy_text} truncated={vendor.policy_history[0].truncated} url={vendor.policy_url} />}
+          {vendor?.policy_history[0] && (
+            <FullPolicy
+              text={vendor.policy_history[0].policy_text}
+              truncated={vendor.policy_history[0].truncated}
+              url={vendor.policy_url}
+              onReread={role === "admin" ? () => void reanalyse("stored") : undefined}
+              busy={busy}
+            />
+          )}
 
           {role === "admin" && (
             <PolicyTester
@@ -216,16 +256,12 @@ export function VendorDrawer({
         </div>
 
         {role === "admin" && (
-          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4">
-            <p className="text-xs text-muted">
-              {vendor && vendor.policy_history.length === 0
-                ? "This vendor's policy hasn't been read yet."
-                : "Download the vendor's current policy and read it again."}
-            </p>
+          <footer className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-line bg-surface px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
+            <BlockStatus blocks={blocks} unread={!!vendor && vendor.policy_history.length === 0} />
             <div className="flex flex-wrap gap-2">
-              {vendor && vendor.policy_history.length > 0 && (
-                <Button variant="ghost" onClick={() => void reanalyse("stored")} disabled={busy || !vendor}>
-                  Re-read saved copy
+              {pendingBlocks[0] && (
+                <Button variant="secondary" onClick={() => onReview(pendingBlocks[0]!)}>
+                  Review proposal
                 </Button>
               )}
               <Button variant="primary" onClick={() => void reanalyse("fetch")} disabled={busy || !vendor?.policy_url}>
@@ -240,15 +276,60 @@ export function VendorDrawer({
   );
 }
 
-/** The stored policy text, collapsed by default because it is long. */
-function FullPolicy({ text, truncated, url }: { text: string; truncated: boolean; url: string | null }) {
+/**
+ * Where this tool stands on blocking, beside the actions. The drawer never proposes or decides a block
+ * itself: the pipeline proposes one when a department's exposure reaches Critical, and an administrator
+ * decides it in the review dialog.
+ */
+function BlockStatus({ blocks, unread }: { blocks: Remediation[]; unread: boolean }) {
+  const departments = (status: Remediation["status"]) => blocks.filter((b) => b.status === status).map((b) => b.department);
+  const pending = departments("pending_approval");
+  const approved = departments("approved");
+  const rejected = departments("rejected");
+
+  let text: string;
+  if (pending.length > 0) text = `Block proposed for ${listOf(pending)}. It waits for an administrator's decision.`;
+  else if (approved.length > 0) text = `Blocked at the proxy for ${listOf(approved)}.`;
+  else if (rejected.length > 0) text = `A block for ${listOf(rejected)} was dismissed. The tool stays reachable.`;
+  else if (unread) text = "This vendor's policy hasn't been read yet.";
+  else text = "No block proposed. One is proposed automatically when a department's exposure reaches Critical.";
+
+  return (
+    <p className="flex min-w-64 flex-1 items-start gap-2 text-xs text-ink2">
+      <BlockIcon size={14} className={`mt-0.5 shrink-0 ${pending.length > 0 ? "text-warning" : approved.length > 0 ? "text-negative" : "text-muted"}`} />
+      <span>{text}</span>
+    </p>
+  );
+}
+
+/** The stored policy text, collapsed by default because it is long. An administrator can score the saved copy again from here. */
+function FullPolicy({
+  text,
+  truncated,
+  url,
+  onReread,
+  busy,
+}: {
+  text: string;
+  truncated: boolean;
+  url: string | null;
+  onReread?: () => void;
+  busy: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <section>
-      <Button variant="ghost" size="sm" className="-ml-3" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <ChevronIcon size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
-        {open ? "Hide the full privacy policy" : "Read the full privacy policy"}
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <Button variant="ghost" size="sm" className="-ml-3" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <ChevronIcon size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+          {open ? "Hide the full privacy policy" : "Read the full privacy policy"}
+        </Button>
+        {onReread && (
+          <Button variant="ghost" size="sm" className="-mr-3" onClick={onReread} disabled={busy}>
+            Re-read saved copy
+          </Button>
+        )}
+      </div>
       {open && (
         <SubCard className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap p-3.5 text-sm text-ink2">
           {text}
@@ -314,8 +395,16 @@ function AnalysisView({ analysis, label, meta }: { analysis: PolicyAnalysis; lab
       )}
 
       <section>
-        <h3 className="text-sm font-semibold text-ink">Score components</h3>
-        <p className="mb-3 text-xs text-muted">Select a component to see the exact policy clause behind it.</p>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-semibold text-ink">Score components</h3>
+          <p className="text-xs text-muted">
+            Total{" "}
+            <span className="font-mono">
+              <span className="text-sm font-medium text-ink">{analysis.posture_score}</span> / 100
+            </span>
+          </p>
+        </div>
+        <p className="mb-3 mt-1 text-xs text-muted">What the policy says on each point. Open one to read the clause behind it.</p>
         <ul className="space-y-2">
           {analysis.factors.map((f) => (
             <FactorRow
@@ -330,34 +419,60 @@ function AnalysisView({ analysis, label, meta }: { analysis: PolicyAnalysis; lab
             />
           ))}
         </ul>
-        <p className="mt-3 text-right text-xs text-muted">
-          Posture total <span className="font-mono text-ink">{analysis.posture_score}</span>{" "}
-          <span className="font-mono">/ 100</span>
-        </p>
       </section>
 
-      <section>
+      <PdpaChecks analysis={analysis} />
+    </div>
+  );
+}
+
+/** The four PDPA principles in statute order, each traced back to the score components it is judged from. */
+function PdpaChecks({ analysis }: { analysis: PolicyAnalysis }) {
+  const sectionNumber = (section: string) => Number(section.replace(/\D/g, ""));
+  const checks = [...evaluatePdpa(analysis)].sort((a, b) => sectionNumber(a.section) - sectionNumber(b.section));
+  const count = (status: string) => checks.filter((c) => c.status === status).length;
+  const violations = count("Violation");
+
+  return (
+    <section>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h3 className="text-sm font-semibold text-ink">Malaysian PDPA (Act 709) statutory check</h3>
-        <p className="mb-3 text-xs text-muted">
-          Mapped automatically from the extracted clauses against the Personal Data Protection Act 2010 (2024 Amendment).
+        <p className="text-xs text-muted">
+          <span className="font-mono text-ink">{violations}</span> {violations === 1 ? "violation" : "violations"},{" "}
+          <span className="font-mono text-ink">{count("Review")}</span> to review,{" "}
+          <span className="font-mono text-ink">{count("Pass")}</span> passed
         </p>
-        <ul className="space-y-2">
-          {evaluatePdpa(analysis).map((chk) => (
+      </div>
+      <p className="mb-3 mt-1 text-xs text-muted">
+        Mapped automatically from the extracted clauses against the Personal Data Protection Act 2010 (2024 Amendment).
+      </p>
+      <ul className="space-y-3">
+        {checks.map((chk) => {
+          const Icon = TONE_ICON[chk.tone];
+          return (
             <li key={chk.section}>
-              <SubCard className="p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-ink">
-                    <span className="font-mono text-ink2">{chk.section}</span> · {chk.principle}
-                  </span>
-                  <Badge tone={chk.tone}>{chk.status}</Badge>
+              <SubCard className="flex">
+                <p className="flex w-16 shrink-0 items-center justify-center border-r border-rule px-2 py-3.5 font-mono text-sm text-ink">
+                  <span aria-hidden>{chk.section}</span>
+                  <span className="sr-only">Section {sectionNumber(chk.section)}</span>
+                </p>
+                <div className="min-w-0 flex-1 p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-ink">{chk.principle}</span>
+                    <Badge tone={chk.tone}>
+                      {Icon && <Icon size={12} />}
+                      {chk.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-relaxed text-ink2">{chk.detail}</p>
+                  {PDPA_BASIS[chk.section] && <p className="mt-1.5 text-xs text-muted">Based on: {PDPA_BASIS[chk.section]}</p>}
                 </div>
-                <p className="mt-1 text-xs text-ink2">{chk.detail}</p>
               </SubCard>
             </li>
-          ))}
-        </ul>
-      </section>
-    </div>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -527,7 +642,11 @@ function FactorRow({
   onToggle: () => void;
 }) {
   const pct = max ? Math.min(100, (factor.points / max) * 100) : 100;
-  const tone = pct >= 75 ? "bg-negative" : pct >= 40 ? "bg-warning" : pct > 0 ? "bg-muted" : "bg-positive";
+  // How much of this component's worst case the policy earned: the badge, the bar and the icon all follow it.
+  const tone: Tone = pct >= 75 ? "danger" : pct >= 40 ? "warning" : pct > 0 ? "neutral" : "success";
+  const bar = { danger: "bg-negative", warning: "bg-warning", neutral: "bg-muted", success: "bg-positive", info: "bg-muted" }[tone];
+  const Icon = TONE_ICON[tone];
+  const shown = answer === undefined ? undefined : answerText(answer);
   return (
     <li>
       <SubCard className="overflow-hidden">
@@ -535,31 +654,34 @@ function FactorRow({
           variant="bare"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex w-full items-center gap-3 p-3.5 text-left transition-colors hover:bg-row-hover"
+          className="flex w-full items-start gap-2 p-3.5 text-left transition-colors hover:bg-row-hover"
         >
+          <ChevronIcon size={14} className={`mt-1 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-sm text-ink">{factor.label}</span>
-              <span className="font-mono text-xs text-ink2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-ink">{factor.label}</span>
+              {shown !== undefined && (
+                <Badge tone={tone}>
+                  {Icon && <Icon size={12} />}
+                  <span className="sr-only">Answer: </span>
+                  <span className={/\d|^[A-Z]{2,3}$/.test(shown) ? "font-mono" : ""}>{shown}</span>
+                </Badge>
+              )}
+            </div>
+            <div className="mt-2.5 flex items-center gap-3">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-raised">
+                <div className={`h-full rounded-full ${bar} transition-[width] duration-300 ease-out`} style={{ width: `${Math.max(pct, factor.points ? 4 : 0)}%` }} />
+              </div>
+              <span className="w-16 shrink-0 text-right font-mono text-xs text-ink">
                 +{factor.points}
                 {max ? <span className="text-muted"> / {max}</span> : null}
               </span>
             </div>
-            <div className="mt-2 h-1 overflow-hidden rounded-full bg-raised">
-              <div className={`h-full rounded-full ${tone} transition-[width] duration-300 ease-out`} style={{ width: `${Math.max(pct, factor.points ? 4 : 0)}%` }} />
-            </div>
           </div>
         </Button>
         {open && (
-          <div className="border-t border-line p-3.5 text-xs">
-            <p className="text-ink2">
-              {answer !== undefined && (
-                <>
-                  Answer: <span className="font-mono text-ink">{answer}</span>.{" "}
-                </>
-              )}
-              {factor.note}
-            </p>
+          <div className="border-t border-line py-3.5 pl-9 pr-3.5 text-xs">
+            <p className="text-ink2">{factor.note}</p>
             {evidence ? (
               <blockquote className="mt-2.5 flex gap-2 rounded-md bg-surface px-3 py-2 leading-relaxed text-ink">
                 <QuoteIcon size={14} className="mt-0.5 shrink-0 text-muted" />
