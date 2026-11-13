@@ -38,7 +38,7 @@ export DATABASE_URL="<the owner's pooled string>"
 python backend/scripts/migrate_db.py
 ```
 
-The same command adds the real AI tools (`002_real_ai_tools.sql`), so traffic from the laptop collector is recognised, and the shared sign-in counters (`003_shared_rate_limits.sql`). Older events have no inbound bytes or destination IP, because those were never recorded. They fill in as your collector sends `bytes_in` and `dest_ip`.
+The same command adds the real AI tools (`002_real_ai_tools.sql`), so traffic from the laptop collector is recognised, shared sign-in counters (`003_shared_rate_limits.sql`), the SHA-256 hash chain and append-only triggers on `audit_log` (`004_audit_hash_chain.sql`), and the post-approval block execution/verification columns (`005_remediation_lifecycle.sql`). Older events have no inbound bytes or destination IP, because those were never recorded. They fill in as your collector sends `bytes_in` and `dest_ip`. Older `audit_log` rows created before `004` keep `NULL` hashes and are preserved as `legacy_unhashed` entries while all new entries form a continuous SHA-256 chain.
 
 The backend also creates the counters table on first use if no migration has, as long as its role may create tables. With the least-privilege role below it can't, so run the migration as the owner; until then sign-in falls back to the per-instance limit.
 
@@ -53,11 +53,11 @@ GRANT USAGE ON SCHEMA public TO shadowguard_app;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO shadowguard_app;
 GRANT DELETE ON app_exposure, rate_limit_hits TO shadowguard_app;  -- the only deletes the app performs
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO shadowguard_app;
-REVOKE UPDATE ON audit_log FROM shadowguard_app;          -- audit log is append-only
+REVOKE UPDATE ON audit_log FROM shadowguard_app;          -- audit log is also protected by UPDATE/DELETE/TRUNCATE triggers
 REVOKE UPDATE ON policy_versions FROM shadowguard_app;    -- stored policy versions are write-once
 ```
 
-Keep using the owner role only for `init_db.py`.
+Keep using the owner role only for `init_db.py` and `migrate_db.py`.
 
 ---
 
@@ -113,6 +113,7 @@ The usernames are `admin` and `viewer` unless you set `DASHBOARD_ADMIN_USERNAME`
    | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
    | `TRUST_PROXY` | `true` on Vercel (see below) |
    | `TELEMETRY_RETENTION_DAYS` | optional: days raw traffic events are kept, default `90` (never shorter than the exposure window) |
+   | `REQUIRE_DUAL_APPROVAL` | optional: `true` enforces four-eyes separation between the admin actor proposing a block and the admin actor approving it (requires distinct per-admin API keys) |
    | `DEMO_SIGN_IN` | optional: `admin` or `viewer` adds a one-click "Open the demo" button. **Anyone with the link can then sign in**, so set it only while recording a demo, then delete it and redeploy |
 
    Do **not** set `SHADOWGUARD_API_URL`. The service binding generates it.

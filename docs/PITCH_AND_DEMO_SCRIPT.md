@@ -26,14 +26,14 @@ Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), 
 | 0:00–0:30 | 1 · Cover | ShadowGuard AI: Governing shadow AI across the university | Our answer to Problem statement 02. It covers two of the example use cases: IT operations automation (finds tools, files tickets) and intelligent document processing (reads and quotes policies). |
 | 0:30–1:00 | 2 · The problem | A free AI grader rewrote its privacy policy, and nobody noticed | GradeSync Pro rewrote its policy to train on student work, keep it 3 years in the US and share it. Exposure went from Low 12 to Critical 93, touching PDPA s. 9 and s. 129. Say plainly that GradeSync Pro is a fictional demo vendor; the diff and the scores are the pipeline's real output. |
 | 1:00–1:30 | 3 · The problem | Staff bring their own AI faster than IT can vet it | 75% of knowledge workers use AI at work, and 78% of those users bring their own tools. Manual review doesn't scale, blanket bans push staff out of sight, and not every upload carries the same risk. |
-| 1:30–2:30 | 4 · Our solution | One pipeline that discovers, reads, scores and responds | Collect (log shipper and laptop proxy), Analyse (FastAPI on Vercel, Neon Postgres), Act (Next.js 15 dashboard). Metadata only: no TLS decryption, no prompts, no files, and usernames hashed at the source. |
+| 1:30–2:30 | 4 · Our solution | One pipeline that discovers, reads, scores and responds | Collect (log shipper and laptop proxy, plus backend auto-discovery of unknown AI domains), Analyse (FastAPI on Vercel, Neon Postgres with hash-chained audit log), Act (Next.js 15 dashboard). Metadata only: no TLS decryption, no prompts, no files, and usernames hashed at the source. |
 | 2:30–4:30 | 5 · Live demo | Two minutes, end to end, on the live site | Switch to the browser and follow section 2. |
-| 4:30–5:00 | 6 · How it works | Find the tools, then read their policies with proof | Discover from Squid or FortiGate logs. Read five answers from each policy; an answer that can't quote a whole sentence is dropped, and a disagreement or hidden instruction marks the vendor Unverified. |
-| 5:00–5:30 | 7 · How it works | Score the exposure, then let a person decide | Exposure = posture × sensitivity × usage. Bands: Low under 30, Moderate 30+, High 50+, Critical 70+. High or Critical files a ticket and a Teams nudge; Critical queues a block proposal. Nothing is blocked automatically. |
-| 5:30–6:30 | 8 · Security and compliance | Built as a security product first | Small supply chain, OWASP Top 10 mapped in `SECURITY.md`, PDPA (Act 709) sections 8, 9, 10 and 129 per vendor, and full keyboard and screen-reader paths. |
+| 4:30–5:00 | 6 · How it works | Find the tools, then read their policies with proof | Discover from Squid or FortiGate logs (and auto-discover unknown `*.ai` / AI-keyword hosts at ingest). Read five scored answers plus four supplemental compliance advisories from each policy; an answer that can't quote a whole sentence is dropped, and a disagreement or hidden instruction marks the vendor Unverified. |
+| 5:00–5:30 | 7 · How it works | Score the exposure, then let a person decide | Exposure = posture × sensitivity × usage. Bands: Low under 30, Moderate 30+, High 50+, Critical 70+. High or Critical files a ticket and a Teams nudge; Critical queues a block proposal. Nothing is blocked automatically; approved blocks track `approved` → `executed` (*Rule applied*) → `verified` (*Verified blocked*). |
+| 5:30–6:30 | 8 · Security and compliance | Built as a security product first | Small supply chain, OWASP Top 10 mapped in `SECURITY.md`, trigger-immutable SHA-256 hash-chained `audit_log` + `/api/audit/verify`, optional four-eyes approval (`REQUIRE_DUAL_APPROVAL`), PDPA (Act 709) sections 8, 9, 10 and 129 per vendor, and full keyboard and screen-reader paths. |
 | 6:30–7:30 | 9 · Performance | Fast enough to watch the network live | Live feed every 4 s, full summary every 8 s while traffic arrives, 0.2–0.5 s reads, 240 reads a minute per client, 90 days of raw telemetry, Teams nudges only after the commit. |
-| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 80 frontend tests and 172 backend tests, plus npm audit and pip-audit. |
-| 8:30–9:30 | 11 · Roadmap | From one campus to every university | Now: what is live. Next: MCP server for Gemini Enterprise, firewall push, single sign-on, per-university weights. Later: in-browser coaching, SIEM sync, multi-campus workspaces. |
+| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 84 frontend tests and 191 backend tests (22 on a real Postgres), plus npm audit and pip-audit. |
+| 8:30–9:30 | 11 · Roadmap | From one campus to every university | Now: what is live (including hash-chained audit verification, block execution lifecycle, unknown-AI discovery, 4 IDP advisories, and printable executive brief). Next: MCP server for Gemini Enterprise, direct firewall push, Entra ID / Google SSO for per-person four-eyes enforcement, per-university weights. Later: in-browser coaching, SIEM sync, multi-campus workspaces. |
 | 9:30–10:00 | 12 · Close | Try ShadowGuard live | Live URL, repository and QR code. Take questions. |
 
 ---
@@ -50,8 +50,8 @@ Start signed in as an admin on the Overview, with *Fit to screen* on.
 | 0:30–0:55 | Click a tool name to open the vendor drawer. Optionally press *Fetch the latest policy*. | "Every answer about this vendor quotes its own policy. Here are the PDPA checks, and the diff from when GradeSync rewrote its policy." |
 | 0:55–1:10 | Open *Tools* in the left rail and sort by severity. | "The full list, sortable, with the departments affected." |
 | 1:10–1:30 | Go back to *Overview* and click *Simulate burst* in the top bar. | "New telemetry arrives. Each event travels an arc on the map and lands in Live traffic within seconds." |
-| 1:30–1:50 | Open *Reviews* in the left rail, press *Review* on a proposal to show the dialog, then close it with *Cancel*. In the export panel, pick *FortiGate CLI* or *Squid ACL* and press *Download rule*. | "Nothing is blocked until an admin approves it here, and the approved list exports straight to the firewall." |
-| 1:50–2:00 | Go back to *Overview* in the left rail. | "Discover, read, score, respond, in one place." |
+| 1:30–1:50 | Open *Reviews* in the left rail, press *Review* on a proposal to show the dialog, then close it with *Cancel*. Show the execution stages (*Rule applied* / *Verify block*), export *FortiGate CLI* or *Squid ACL*, and click *Verify audit chain*. | "Nothing is blocked until an admin approves it here; applied rules track execution and verification, export straight to the firewall, and every audit entry is SHA-256 hash-chained." |
+| 1:50–2:00 | Click the *Print* icon (for the printable Executive Governance Brief preview) or return to *Overview* in the left rail. | "Discover, read, score, respond, and audit — in one place." |
 
 Leave the proposal undecided in the demo. Approving or dismissing it is recorded in the audit log and can't be undone, and it takes the proposal out of the queue for the next run.
 
@@ -75,7 +75,7 @@ Leave the proposal undecided in the demo. Approving or dismissing it is recorded
 | Raw telemetry kept | 90 days | `telemetry_retention_days` in `backend/shadowguard/config.py`; pruned by `backend/scripts/prune_telemetry.py` |
 | Dashboard reads | About 0.2 to 0.5 s | Measured on 5 November 2026, after moving the functions from iad1 to sin1 next to the Neon database |
 | Gemini model | `gemini-2.5-flash` | `DEFAULT_MODEL` in `backend/shadowguard/gemini.py` |
-| Tests | 80 frontend; 172 backend, 21 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend pytest suite. Frontend run locally on 12 November 2026: 80 of 80 pass. Backend run locally on 12 November 2026: 151 pass and the 21 database tests skip without a test database |
+| Tests | 84 frontend; 191 backend, 22 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend `pytest` suite. Verified locally on 13 November 2026: 84 of 84 frontend tests pass; 169 backend tests pass and 22 database integration tests run against Postgres in CI (`TEST_DATABASE_URL`) |
 | Survey figures | 75% of knowledge workers use AI at work; 78% of AI users bring their own tools | Microsoft and LinkedIn, [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/), 31,000 people in 31 countries |
 
 ---
@@ -86,11 +86,11 @@ Leave the proposal undecided in the demo. Approving or dismissing it is recorded
 
 **Do you read prompts or files?** No. It sees the hostname, byte counts, the time, a salted hash of the username, and the department. There is no TLS decryption.
 
-**What if Gemini makes something up?** Every answer must quote a whole sentence from the policy word for word, or it is dropped. The rules and Gemini read the policy separately. If they disagree, or the page hides instructions aimed at an AI reader, the vendor is marked Unverified and scored at least 50 (High).
+**What if Gemini makes something up?** Every scored answer (and each of the 4 supplemental advisories) must quote a whole sentence from the policy word for word, or it is dropped. The rules and Gemini read the policy separately. If they disagree, or the page hides instructions aimed at an AI reader, the vendor is marked Unverified and scored at least 50 (High).
 
-**Why not block automatically?** A wrong block cuts staff off in the middle of their work, so the decision stays with a person. The review dialog opens with focus on *Cancel*, and a block counts only after the server confirms it.
+**Why not block automatically?** A wrong block cuts staff off in the middle of their work, so the decision stays with a person. The review dialog opens with focus on *Cancel*, a block counts only after the server confirms it, optional `REQUIRE_DUAL_APPROVAL=true` prevents self-approval across distinct admin keys, and applied blocks track through *Rule applied* (`executed`) and *Verify block* (`verified`).
 
-**How does it know the department?** The log shipper looks up each username in the staff directory, then hashes the username with a secret salt before anything leaves campus (`collector/campus_log_shipper.py`).
+**How does it know the department — and new AI tools?** The log shipper looks up each username in the staff directory, then hashes the username with a secret salt before anything leaves campus (`collector/campus_log_shipper.py`). Any unknown `*.ai` or AI-keyword hostname sent to `/api/v1/telemetry` is also auto-discovered into an `unverified` posture for review.
 
 **Is GradeSync Pro real?** No. It's a fictional demo vendor. The policy diff and the scores on slide 2 are what the real pipeline produced from its two policy texts.
 
@@ -103,6 +103,6 @@ If you rehearsed the first version of this deck, these figures changed to match 
 - The bands are High from 50 and Critical from 70 (not 60 and 80), and the formula is posture × sensitivity × usage.
 - "30% of staff use 12+ unapproved AI tools" is gone, because nothing supported it. Slide 3 now uses the Work Trend Index figures above.
 - "Under 200 ms" is now the measured 0.2 to 0.5 s.
-- The backend has 172 tests (151 unit/security + 21 PostgreSQL integration).
+- The backend has 191 tests (169 unit/security + 22 PostgreSQL integration) and the frontend has 84 tests (`npm run test:frontend`).
 - GradeSync Pro is presented as a fictional demo vendor, and the CampusNote AI example is gone.
 - The roadmap has no quarter dates.

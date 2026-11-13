@@ -14,14 +14,14 @@ ShadowGuard finds unapproved AI tools that staff already use, so that student re
 
 ## 3. What is collected, and what isn't
 
-Collected, per connection to a catalogued AI tool (`telemetry_events`):
+Collected, per connection to a catalogued or heuristic-matched AI tool (`telemetry_events`):
 
 | Field | Example | Why | Identifies a person? |
 |---|---|---|---|
 | Time | `2026-11-05 14:23` | When the tool was used | No |
 | Department | `Examinations & Assessment` | Data sensitivity differs by department | Only with very small departments |
 | User ID | 64-character hash | Counting distinct users | Pseudonymous: a SHA-256 of the account name mixed with a secret salt held at the source, never by ShadowGuard |
-| Tool's domain | `chatgpt.com` | Which tool | No; only catalogued AI domains are reported |
+| Tool's domain | `chatgpt.com` | Which tool | No; campus collectors watch known AI domains, and the API auto-discovers unknown `*.ai` / AI-keyword hostnames while ignoring general web traffic |
 | Bytes out and in | `635 B`, `534 KB` | How much was sent | No |
 | Tool's public IP | `104.18.32.47` | Where the traffic went | No; staff addresses are refused |
 | Source | `proxy` | Where the record came from | No |
@@ -40,12 +40,12 @@ Anyone whose traffic passes through the proxy, firewall feed or laptop collector
 
 | Principle | What ShadowGuard does | Decide |
 |---|---|---|
-| General | Metadata only, catalogued AI domains only, hashed at the source | The lawful purpose, in writing |
+| General | Metadata only, AI-tool domains only (catalogued or `*.ai` / AI-keyword hostnames), hashed at the source | The lawful purpose, in writing |
 | Notice and choice | Nothing by itself | The staff notice (draft below) and whether consent is needed |
 | Disclosure | No data leaves ShadowGuard except department-level Teams nudges | Who may receive reports |
-| Security | Mapped to the OWASP Top 10 in [SECURITY.md](../SECURITY.md): TLS everywhere, hashed API keys, signed sessions, rate limits, an append-only audit log, a least-privilege database role | Who holds the admin login |
+| Security | Mapped to the OWASP Top 10 in [SECURITY.md](../SECURITY.md): TLS everywhere, hashed API keys, signed sessions, rate limits, a trigger-immutable SHA-256 hash-chained audit log (`GET /api/audit/verify`), a least-privilege database role | Who holds the admin login |
 | Retention | Raw traffic deleted after `TELEMETRY_RETENTION_DAYS` (default 90); records without a person are kept | The retention period, and how long incidents and decisions are kept |
-| Data integrity | Every policy answer quotes the policy sentence it relies on; scores are explainable | How errors are corrected |
+| Data integrity | Every policy answer (and every supplemental compliance advisory) quotes the policy sentence it relies on; scores are explainable | How errors are corrected |
 | Access | No screen, export or search shows a person or a hash; only counts | How access requests are handled (ShadowGuard can't look a person up; the salt holder could) |
 
 ## 6. Risks and how they're reduced
@@ -54,7 +54,7 @@ Anyone whose traffic passes through the proxy, firewall feed or laptop collector
 |---|---|---|
 | Someone works out who a hash belongs to | Secret salt at the source; hashes never shown; deleted after the retention period | **Decide:** whether to hide counts below a minimum (for example under 3), since a count of 1 in a small department can point to a person. ShadowGuard doesn't do this yet. |
 | Used to watch individuals | No per-person view, export or live feed; the live feed excludes hashes | **Decide:** a written purpose limitation that rules out performance monitoring |
-| Blocking gets in the way of legitimate work | Blocks are only proposed; a person approves; nudges suggest an approved tool | Approved blocks still need applying at the proxy |
+| Blocking gets in the way of legitimate work | Blocks are only proposed; a person approves, marks the firewall rule applied (`executed`), and verifies enforcement (`verified`); nudges suggest an approved tool | Exported firewall rules still need applying at the proxy unless an API integration is connected |
 | A secret leaks | Procedure in [SECURITY.md](../SECURITY.md#if-a-secret-leaks) | Breach notification per the DPO's procedure |
 | Demo sign-in left on | Off by default; a "Demo mode" badge shows while it's on; each use is logged | Must be off on any deployment holding real data |
 
