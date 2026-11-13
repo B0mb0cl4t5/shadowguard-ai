@@ -37,7 +37,7 @@ flowchart LR
 | **1 · Discover** | Proxy/DNS events (domain, department, time, bytes out and in, the vendor's IP, *hashed* user id) are matched against a catalogue of AI services. No payloads, no URLs, no TLS interception, no client IPs. | `backend/shadowguard/pipeline.py` `match_domain` · `service.ingest_telemetry` |
 | **2 · Read the terms** | The vendor's policy is screened for prompt injection, then five answers are extracted (training on inputs, retention, location, third-party sharing, opt-out). **Every answer must quote a whole sentence of the policy verbatim** or it is discarded. Uses Gemini when `GEMINI_API_KEY` is set, otherwise a deterministic rule-based extractor; both pass through the same guard. With Gemini on, the rule-based extractor also runs as an **independent cross-check**: if the two disagree on any answer, or only one of them has an answer, the vendor is Unverified. | `idp.py`, `gemini.py` |
 | **3 · Score** | Transparent rubric, 0–100. Vendor posture × department data sensitivity × usage spread. Every component is shown with the clause that triggered it. | `scoring.py` |
-| **4 · Respond** | High/Critical opens an incident, sends a nudge and pre-fills an IT risk ticket. Critical also *proposes* a domain block that waits for an admin. | `pipeline.plan_response`, `service._respond` |
+| **4 · Respond** | High/Critical opens an incident, sends a nudge and pre-fills an IT risk ticket. Critical also *proposes* a domain block that waits for an admin, and an admin can propose one by hand from a tool's panel, with a reason. Either way nothing is blocked until an admin approves it in the review dialog. | `pipeline.plan_response`, `service._respond`, `service.propose_block` |
 
 ### The scoring rubric
 
