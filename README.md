@@ -86,7 +86,7 @@ shadowguard-ai/
 ├── frontend/                    Next.js 15 (App Router, TypeScript, Tailwind) → Vercel
 │   ├── app/                     Pages + server route handlers (the browser never sees an API key)
 │   ├── components/              Screens and in-house charts, plus ui/ for the shared card, table, badge, button and input
-│   ├── lib/                     session signing, PBKDF2, backend client, guards, theme state, 85 unit & UI design-contract tests
+│   ├── lib/                     session signing, PBKDF2, backend client, guards, theme state, 86 unit & UI design-contract tests
 │   ├── middleware.ts            Auth gate + per-request nonce CSP
 │   └── public/                  PWA icons + service worker
 ├── database/

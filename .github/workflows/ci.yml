@@ -9,7 +9,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend (Typecheck, 85 Tests, Build & Audit)
+    name: Frontend (Typecheck, 86 Tests, Build & Audit)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,7 +31,7 @@ jobs:
       - name: TypeScript typecheck
         run: npm run typecheck
 
-      - name: Unit & UI design-contract tests (85 tests)
+      - name: Unit & UI design-contract tests (86 tests)
         run: npm test
 
       - name: Next.js production build

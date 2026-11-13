@@ -32,7 +32,7 @@ Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), 
 | 5:00–5:30 | 7 · How it works | Score the exposure, then let a person decide | Exposure = posture × sensitivity × usage. Bands: Low under 30, Moderate 30+, High 50+, Critical 70+. High or Critical files a ticket and a Teams nudge; Critical queues a block proposal. Nothing is blocked automatically; admins record approved blocks as `approved` → `executed` (*Rule applied*) → `verified` (*Block checked*). |
 | 5:30–6:30 | 8 · Security and compliance | Built as a security product first | Small supply chain, OWASP Top 10 mapped in `SECURITY.md`, trigger-immutable SHA-256 hash-chained `audit_log` + `/api/audit/verify`, optional four-eyes approval (`REQUIRE_DUAL_APPROVAL`), PDPA (Act 709) sections 8, 9, 10 and 129 per vendor, and full keyboard and screen-reader paths. |
 | 6:30–7:30 | 9 · Performance | Fast enough to watch the network live | Live feed every 4 s, full summary every 8 s while traffic arrives, 0.2–0.5 s reads, 240 reads a minute per client, 90 days of raw telemetry, Teams nudges only after the commit. |
-| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 85 frontend tests and 202 backend tests (23 on a real Postgres), plus npm audit and pip-audit. |
+| 7:30–8:30 | 10 · Deployment and operations | Deployed on Vercel, tested on every push | One Vercel project with two services, Neon in Singapore, and CI on every push: 86 frontend tests and 202 backend tests (23 on a real Postgres), plus npm audit and pip-audit. |
 | 8:30–9:30 | 11 · Roadmap | From one campus to every university | Now: what is live (including hash-chained audit verification, block execution lifecycle, unknown-AI discovery, 4 IDP advisories, and printable executive brief). Next: MCP server for Gemini Enterprise, direct firewall push, Entra ID / Google SSO for per-person four-eyes enforcement, per-university weights. Later: in-browser coaching, SIEM sync, multi-campus workspaces. |
 | 9:30–10:00 | 12 · Close | Try ShadowGuard live | Live URL, repository and QR code. Take questions. |
 
@@ -75,7 +75,7 @@ Leave the proposal undecided in the demo. Approving or dismissing it is recorded
 | Raw telemetry kept | 90 days | `telemetry_retention_days` in `backend/shadowguard/config.py`; pruned by `backend/scripts/prune_telemetry.py` |
 | Dashboard reads | About 0.2 to 0.5 s | Measured on 5 November 2026, after moving the functions from iad1 to sin1 next to the Neon database |
 | Gemini model | `gemini-2.5-flash` | `DEFAULT_MODEL` in `backend/shadowguard/gemini.py` |
-| Tests | 85 frontend; 202 backend, 23 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend `pytest` suite. Verified locally on 13 November 2026: 85 of 85 frontend tests pass, and all 202 backend tests pass against a throwaway Postgres (`TEST_DATABASE_URL`); without one, 179 pass and the 23 database tests skip |
+| Tests | 86 frontend; 202 backend, 23 of them on a real Postgres | `npm run test:frontend` from the repo root, and the backend `pytest` suite. Verified locally on 13 November 2026: 86 of 86 frontend tests pass, and all 202 backend tests pass against a throwaway Postgres (`TEST_DATABASE_URL`); without one, 179 pass and the 23 database tests skip |
 | Survey figures | 75% of knowledge workers use AI at work; 78% of AI users bring their own tools | Microsoft and LinkedIn, [2024 Work Trend Index](https://blogs.microsoft.com/blog/2024/05/08/microsoft-and-linkedin-release-the-2024-work-trend-index-on-the-state-of-ai-at-work/), 31,000 people in 31 countries |
 
 ---
@@ -103,6 +103,6 @@ If you rehearsed the first version of this deck, these figures changed to match 
 - The bands are High from 50 and Critical from 70 (not 60 and 80), and the formula is posture × sensitivity × usage.
 - "30% of staff use 12+ unapproved AI tools" is gone, because nothing supported it. Slide 3 now uses the Work Trend Index figures above.
 - "Under 200 ms" is now the measured 0.2 to 0.5 s.
-- The backend has 202 tests (179 unit/security + 23 PostgreSQL integration) and the frontend has 85 tests (`npm run test:frontend`).
+- The backend has 202 tests (179 unit/security + 23 PostgreSQL integration) and the frontend has 86 tests (`npm run test:frontend`).
 - GradeSync Pro is presented as a fictional demo vendor, and the CampusNote AI example is gone.
 - The roadmap has no quarter dates.

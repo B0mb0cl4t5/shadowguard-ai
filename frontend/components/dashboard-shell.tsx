@@ -533,7 +533,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
 
       <header className="z-20 border-b border-line bg-ground sm:sticky sm:top-0 dense:static print:static">
         <div className="mx-auto flex min-h-14 w-full max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 sm:px-6 dense:min-h-12 dense:py-1.5">
-          <div className="flex min-w-0 flex-1 items-baseline gap-x-4">
+          {/* Never shrink below the title below xl so flex-wrap pushes controls onto a second row instead of overlapping the heading. */}
+          <div className="flex max-w-full shrink-0 items-baseline gap-x-4 xl:min-w-60 xl:flex-1">
             <Button variant="bare" onClick={goHome} aria-label="ShadowGuard home, go to Overview" className="shrink-0 cursor-pointer self-center rounded-sm lg:hidden">
               <ShieldMark size={22} className="text-accent" />
             </Button>
@@ -544,8 +545,8 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             </p>
           </div>
 
-          {/* On a phone the controls wrap rather than push the page sideways. */}
-          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+          {/* On a phone or tablet the controls wrap to a right-aligned second row rather than push the page sideways. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             {/* Connection status: announces changes to screen readers, not the clock. */}
             <span className="sr-only" role="status">
               {stale ? "Connection lost. Reconnecting." : "Connection live."}

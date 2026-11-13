@@ -55,3 +55,13 @@ test("the drawer still reports a block once its rule is marked applied or checke
     assert.ok(status.includes(s), `BlockStatus reads ${s}`);
   }
 });
+
+test("header title group stays shrink-0 below xl so compact viewports wrap controls instead of overlapping", () => {
+  const shellSrc = read("components/dashboard-shell.tsx");
+  const headerStart = shellSrc.indexOf("<header");
+  const headerEnd = shellSrc.indexOf("</header>", headerStart);
+  assert.ok(headerStart > 0 && headerEnd > headerStart, "dashboard-shell renders a header");
+  const header = shellSrc.slice(headerStart, headerEnd);
+  assert.match(header, /className="[^"]*\bshrink-0\b[^"]*\bxl:flex-1\b[^"]*"/);
+  assert.match(header, /className="[^"]*\bml-auto\b[^"]*\bflex-wrap\b[^"]*"/);
+});
