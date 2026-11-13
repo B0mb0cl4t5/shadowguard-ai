@@ -3,7 +3,7 @@
 Presenter guide for [`ShadowGuard_Overview.pptx`](./ShadowGuard_Overview.pptx), with a PDF copy in [`ShadowGuard_Overview.pdf`](./ShadowGuard_Overview.pdf). Each slide's speaker notes hold the full talk track and its timing; this page is the run sheet, the demo script, and where every figure comes from.
 
 - **Live demo:** https://shadowguard-ai-bice.vercel.app
-- **Repository:** https://github.com/ongzixuan456/shadowguard-ai
+- **Repository:** https://github.com/B0mb0cl4t5/shadowguard-ai
 - **Event:** APU Cloud Innovation Hackathon 2026, Problem statement 02 (Intelligent automation and digital transformation)
 - **Format:** 10 minutes, 12 slides, 16:9. The fonts are embedded, so the deck looks the same on the venue PC.
 
