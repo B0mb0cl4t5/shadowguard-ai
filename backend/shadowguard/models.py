@@ -127,6 +127,19 @@ class DecisionRequest(StrictModel):
         return "".join(ch for ch in v if ch.isprintable())
 
 
+class AdvanceRemediationRequest(StrictModel):
+    """Advance an approved domain block through rule execution and verification."""
+
+    stage: Literal["execute", "verify"]
+    note: str = Field(default="", max_length=500)
+
+    @field_validator("note")
+    @classmethod
+    def _printable(cls, v: str) -> str:
+        # Strip control characters so the note cannot corrupt logs (log injection).
+        return "".join(ch for ch in v if ch.isprintable())
+
+
 class BlockProposalRequest(StrictModel):
     """An administrator proposing a block by hand. It only queues the proposal; the decision is separate."""
 

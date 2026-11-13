@@ -15,12 +15,16 @@ OWASP A03 (Injection) — the rules this module follows, without exception:
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
+
+from . import audit as audit_chain
+
+AUDIT_LOCK_KEY = 0x5347_4155  # "SGAU" — serializes audit hash-chain appends per Postgres instance
 
 Row = dict[str, Any]
 
@@ -154,7 +158,8 @@ def vendor_apps(conn: psycopg.Connection, vendor_id: int) -> list[Row]:
 
 def remediation(conn: psycopg.Connection, action_id: int, for_update: bool = False) -> Row | None:
     query = sql.SQL(
-        "SELECT id, app_id, department_id, incident_id, action_type, status, detail "
+        "SELECT id, app_id, department_id, incident_id, action_type, status, detail, "
+        "requested_by, executed_by, verified_by "
         "FROM remediation_actions WHERE id = %s"
     )
     if for_update:
@@ -361,7 +366,8 @@ def recent_remediations(conn: psycopg.Connection, limit: int = 30) -> list[Row]:
     return conn.execute(
         """
         SELECT r.id, r.created_at, r.action_type, r.status, r.requires_approval, r.detail,
-               r.decided_by, r.decided_at, r.decision_note,
+               r.requested_by, r.decided_by, r.decided_at, r.decision_note,
+               r.executed_by, r.executed_at, r.verified_by, r.verified_at,
                a.name AS app, a.domain, d.name AS department
           FROM remediation_actions r
           JOIN saas_apps a   ON a.id = r.app_id
@@ -456,16 +462,17 @@ def resolve_incidents(conn: psycopg.Connection, app_id: int, department_id: int,
 
 
 def insert_remediation(conn: psycopg.Connection, app_id: int, department_id: int, incident_id: int | None,
-                       action_type: str, status: str, requires_approval: bool, detail: str) -> int | None:
+                       action_type: str, status: str, requires_approval: bool, detail: str,
+                       requested_by: str | None = None) -> int | None:
     row = conn.execute(
         """
         INSERT INTO remediation_actions
-               (app_id, department_id, incident_id, action_type, status, requires_approval, detail)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+               (app_id, department_id, incident_id, action_type, status, requires_approval, detail, requested_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (app_id, department_id, action_type) WHERE status = 'pending_approval' DO NOTHING
         RETURNING id
         """,
-        (app_id, department_id, incident_id, action_type, status, requires_approval, detail),
+        (app_id, department_id, incident_id, action_type, status, requires_approval, detail, requested_by),
     ).fetchone()
     return row["id"] if row else None
 
@@ -476,7 +483,7 @@ def set_remediation_status(conn: psycopg.Connection, action_id: int, status: str
 
 
 def decide_remediation(conn: psycopg.Connection, action_id: int, status: str, actor: str,
-                       note: str, detail_suffix: str) -> Row:
+                       note: str, detail_suffix: str) -> Row | None:
     return conn.execute(
         """
         UPDATE remediation_actions
@@ -487,6 +494,64 @@ def decide_remediation(conn: psycopg.Connection, action_id: int, status: str, ac
         """,
         (status, actor, note or None, detail_suffix, action_id),
     ).fetchone()
+
+
+def advance_remediation(conn: psycopg.Connection, action_id: int, stage: str, actor: str,
+                          detail_suffix: str) -> Row | None:
+    """Advance an approved block_domain action: approved -> executed -> verified."""
+    if stage == "execute":
+        return conn.execute(
+            """
+            UPDATE remediation_actions
+               SET status = 'executed', executed_by = %s, executed_at = NOW(),
+                   detail = detail || %s
+             WHERE id = %s AND status = 'approved' AND action_type = 'block_domain'
+            RETURNING id, status, executed_by, executed_at, verified_by, verified_at
+            """,
+            (actor, detail_suffix, action_id),
+        ).fetchone()
+    return conn.execute(
+        """
+        UPDATE remediation_actions
+           SET status = 'verified', verified_by = %s, verified_at = NOW(),
+               detail = detail || %s
+         WHERE id = %s AND status = 'executed' AND action_type = 'block_domain'
+        RETURNING id, status, executed_by, executed_at, verified_by, verified_at
+        """,
+        (actor, detail_suffix, action_id),
+    ).fetchone()
+
+
+def upsert_discovered_app(conn: psycopg.Connection, domain: str, app_name: str, vendor_name: str) -> tuple[int, bool]:
+    """Register an uncatalogued AI-like domain as an unverified tool idempotently."""
+    conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", (domain,))
+    existing = conn.execute("SELECT id FROM saas_apps WHERE domain = %s", (domain,)).fetchone()
+    if existing is not None:
+        return existing["id"], False
+    vendor = conn.execute("SELECT id FROM vendors WHERE lower(name) = lower(%s) LIMIT 1", (vendor_name,)).fetchone()
+    if vendor is None:
+        vendor = conn.execute(
+            """
+            INSERT INTO vendors (name, website, posture_score, verification_status, verification_notes)
+            VALUES (%s, %s, 58, 'unverified', %s)
+            RETURNING id
+            """,
+            (
+                vendor_name[:120],
+                f"https://{domain}"[:200],
+                Jsonb(["Auto-discovered uncatalogued AI domain from network telemetry; policy not yet analyzed."]),
+            ),
+        ).fetchone()
+    inserted = conn.execute(
+        """
+        INSERT INTO saas_apps (vendor_id, name, domain, category, approved, is_ai)
+        VALUES (%s, %s, %s, 'chat_assistant', FALSE, TRUE)
+        ON CONFLICT (domain) DO UPDATE SET name = saas_apps.name
+        RETURNING id
+        """,
+        (vendor["id"], app_name[:120], domain[:160]),
+    ).fetchone()
+    return inserted["id"], True
 
 
 def set_exposure_status(conn: psycopg.Connection, app_id: int, department_id: int, status: str) -> None:
@@ -568,10 +633,55 @@ def upsert_snapshot(conn: psycopg.Connection, index: float, detections: int, cri
 
 def audit(conn: psycopg.Connection, role: str, key_fp: str, action: str, target: str,
           detail: dict | None = None) -> None:
-    conn.execute(
-        "INSERT INTO audit_log (actor_role, actor_key, action, target, detail) VALUES (%s, %s, %s, %s, %s)",
-        (role, key_fp[:12].ljust(12, "0"), action[:48], target[:120], Jsonb(detail or {})),
+    conn.execute("SELECT pg_advisory_xact_lock(%s)", (AUDIT_LOCK_KEY,))
+    head = conn.execute(
+        "SELECT entry_hash FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    prev_hash = head["entry_hash"] if head else audit_chain.GENESIS_HASH
+    at = datetime.now(timezone.utc)
+    actor_role = role[:16]
+    actor_key = key_fp[:12].ljust(12, "0")
+    action_clean = action[:48]
+    target_clean = target[:120]
+    detail_norm = audit_chain.normalize_detail(detail)
+    entry_hash = audit_chain.compute_hash(
+        at=at,
+        actor_role=actor_role,
+        actor_key=actor_key,
+        action=action_clean,
+        target=target_clean,
+        detail=detail_norm,
+        prev_hash=prev_hash,
     )
+    conn.execute(
+        """
+        INSERT INTO audit_log (at, actor_role, actor_key, action, target, detail, prev_hash, entry_hash)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (at, actor_role, actor_key, action_clean, target_clean, Jsonb(detail_norm), prev_hash, entry_hash),
+    )
+
+
+def list_audit(conn: psycopg.Connection, limit: int = 50) -> list[Row]:
+    return conn.execute(
+        """
+        SELECT id, at, actor_role, actor_key, action, target, detail, prev_hash, entry_hash
+          FROM audit_log
+         ORDER BY id DESC
+         LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+
+
+def audit_chain_rows(conn: psycopg.Connection) -> list[Row]:
+    return conn.execute(
+        """
+        SELECT id, at, actor_role, actor_key, action, target, detail, prev_hash, entry_hash
+          FROM audit_log
+         ORDER BY id ASC
+        """
+    ).fetchall()
 
 
 def now(conn: psycopg.Connection) -> datetime:

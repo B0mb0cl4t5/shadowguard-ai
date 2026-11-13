@@ -85,6 +85,7 @@ export type RemediationStatus =
   | "simulated"
   | "pending_approval"
   | "approved"
+  | "verified"
   | "rejected"
   | "failed";
 
@@ -95,9 +96,14 @@ export interface Remediation {
   status: RemediationStatus;
   requires_approval: boolean;
   detail: string;
+  requested_by?: string | null;
   decided_by: string | null;
   decided_at: string | null;
   decision_note: string | null;
+  executed_by?: string | null;
+  executed_at?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
   app: string;
   domain: string;
   department: string;
@@ -155,6 +161,7 @@ export interface VendorDetail {
   severity: Severity;
   factors: Factor[];
   evidence: Evidence[];
+  advisories?: PolicyAdvisory[];
   injection_flags: string[];
   verification_status: "verified" | "unverified";
   verification_notes: string[];
@@ -174,6 +181,24 @@ export interface PolicyVersion {
   truncated: boolean;
 }
 
+export interface PolicyAdvisory {
+  field: string;
+  label: string;
+  value: string;
+  risk: "warn" | "good" | "info";
+  quote: string;
+}
+
+export interface AuditVerifyResult {
+  intact: boolean;
+  checked: number;
+  legacy_unhashed: number;
+  total_entries: number;
+  first_broken_id: number | null;
+  head_hash: string | null;
+  reason: string | null;
+}
+
 /** Result of a policy analysis (stored vendor or a dry run from the live test box). */
 export interface PolicyAnalysis {
   vendor_id?: number;
@@ -182,6 +207,7 @@ export interface PolicyAnalysis {
   factors: Factor[];
   answers: Record<string, string>;
   evidence: Evidence[];
+  advisories?: PolicyAdvisory[];
   injection_flags: string[];
   discarded_claims?: number;
   verification_status: "verified" | "unverified";

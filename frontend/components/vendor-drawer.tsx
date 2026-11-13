@@ -633,6 +633,33 @@ function AnalysisView({ analysis, label, meta }: { analysis: PolicyAnalysis; lab
         </ul>
       </section>
 
+      {(analysis.advisories?.length ?? 0) > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-ink">Supplemental policy signals</h3>
+          <p className="mt-1 text-xs text-muted">
+            Extra clauses verified from the policy text for compliance context (excluded from the 5-factor score).
+          </p>
+          <ul className="mt-3 space-y-2">
+            {analysis.advisories!.map((adv) => (
+              <li key={`${adv.field}:${adv.value}`}>
+                <SubCard className="p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-ink">{adv.label}</span>
+                    <Badge tone={adv.risk === "warn" ? "warning" : adv.risk === "good" ? "success" : "neutral"}>
+                      {titleCase(adv.value)}
+                    </Badge>
+                  </div>
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-ink2">
+                    <QuoteIcon size={12} className="mt-0.5 shrink-0 text-muted" />
+                    <span>{adv.quote}</span>
+                  </p>
+                </SubCard>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <PdpaChecks analysis={analysis} />
     </div>
   );

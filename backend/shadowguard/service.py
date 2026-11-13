@@ -14,15 +14,17 @@ from typing import Any
 
 import psycopg
 
+from . import audit as audit_chain
 from . import repository as repo
 from . import gemini
 from .config import get_settings
 from .db import after_commit, get_connection
-from .idp import analyse_policy
+from .idp import analyse_policy, extract_advisories
 from .models import TelemetryEvent
 from .notify import send_nudge
 from .pipeline import (
-    PairState, aggregate, incident_text, match_domain, nudge_message, plan_response, ticket_text,
+    PairState, aggregate, display_name_for_domain, incident_text, looks_like_ai,
+    match_domain, nudge_message, plan_response, registrable_domain, ticket_text,
 )
 from .scoring import VendorPosture, exposure, exposure_index, severity_for, vendor_posture
 
@@ -50,13 +52,17 @@ class Conflict(RuntimeError):
     pass
 
 
+class Forbidden(PermissionError):
+    pass
+
+
 # ------------------------------------------------------------------ stage 1: discover
 
 def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> dict[str, Any]:
     departments = repo.departments_by_name(conn)
     domains = repo.app_domain_index(conn)
     rows, touched = [], set()
-    unknown_departments, unmatched = 0, 0
+    unknown_departments, unmatched, discovered = 0, 0, 0
     for ev in events:
         dept = departments.get(ev.department.lower())
         if dept is None:
@@ -64,8 +70,19 @@ def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> 
             continue
         app_id = match_domain(ev.domain, domains)
         if app_id is None:
-            unmatched += 1
-            continue
+            if looks_like_ai(ev.domain):
+                root = registrable_domain(ev.domain)
+                label = display_name_for_domain(root)
+                app_id, created = repo.upsert_discovered_app(conn, root, label, label)
+                domains[root] = app_id
+                clean_host = ev.domain.lower().rstrip(".")
+                if clean_host != root:
+                    domains[clean_host] = app_id
+                if created:
+                    discovered += 1
+            else:
+                unmatched += 1
+                continue
         touched.add((app_id, dept["id"]))
         rows.append((ev.observed_at, dept["id"], ev.user_hash, ev.domain, app_id, ev.bytes_out, ev.bytes_in,
                      ev.dest_ip, ev.source))
@@ -80,6 +97,7 @@ def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> 
         "accepted": len(rows),
         "rejected_unknown_department": unknown_departments,
         "unmatched_domains": unmatched,
+        "auto_discovered_apps": discovered,
         "pairs_rescored": len(touched),
         "remediation_actions": actions,
     }
@@ -236,6 +254,7 @@ def _analysis_payload(result, score) -> dict[str, Any]:
             "third_party_sharing": p.third_party_sharing, "opt_out": p.opt_out,
         }),
         "evidence": result.evidence_dicts(),
+        "advisories": result.advisory_dicts(),
         "injection_flags": result.injection_flags,
         "verification_status": "verified" if result.verified else "unverified",
         "verification_notes": result.verification_notes(),
@@ -294,6 +313,7 @@ def vendor_detail(conn: psycopg.Connection, vendor_id: int) -> dict[str, Any]:
         "severity": severity_for(v["posture_score"]),
         "factors": score.factors_as_dicts(),
         "evidence": v["evidence"],
+        "advisories": extract_advisories(v["policy_text"]) if v.get("policy_text") else [],
         "injection_flags": v["injection_flags"],
         "verification_status": v["verification_status"],
         "verification_notes": v["verification_notes"],
@@ -330,9 +350,16 @@ def decide_remediation(conn: psycopg.Connection, action_id: int, decision: str, 
         raise NotFound("remediation")
     if action["status"] != "pending_approval":
         raise Conflict("This action has already been decided")
+    if (
+        decision == "approve"
+        and get_settings().require_dual_approval
+        and action.get("requested_by")
+        and action["requested_by"] == actor
+    ):
+        raise Forbidden("Dual approval is enabled: the administrator who proposed a block cannot approve it")
     if decision == "approve":
         suffix = (" — APPROVED: domain added to the proxy block list "
-                  "(simulated in this build; wire to the FortiGate/proxy API in production).")
+                  "(ready to apply at FortiGate/Squid perimeter).")
         row = repo.decide_remediation(conn, action_id, "approved", actor, note, suffix)
         repo.set_exposure_status(conn, action["app_id"], action["department_id"], "mitigated")
         repo.resolve_incidents(conn, action["app_id"], action["department_id"], "mitigated")
@@ -343,6 +370,35 @@ def decide_remediation(conn: psycopg.Connection, action_id: int, decision: str, 
         raise Conflict("This action has already been decided")
     refresh_snapshot(conn)
     return {"id": row["id"], "status": row["status"], "decided_at": row["decided_at"]}
+
+
+def advance_remediation(conn: psycopg.Connection, action_id: int, stage: str, actor: str, note: str) -> dict:
+    """Advance an approved block_domain remediation through rule application and verification."""
+    action = repo.remediation(conn, action_id, for_update=True)
+    if action is None:
+        raise NotFound("remediation")
+    if action["action_type"] != "block_domain":
+        raise Conflict("Only domain block actions support execution lifecycle stages")
+    if stage == "execute":
+        if action["status"] != "approved":
+            raise Conflict(f"Cannot mark executed while action is '{action['status']}'")
+        suffix = f" — EXECUTED by {actor}" + (f" ({note})" if note else "")
+    elif stage == "verify":
+        if action["status"] != "executed":
+            raise Conflict(f"Cannot verify block while action is '{action['status']}'")
+        suffix = f" — VERIFIED blocked by {actor}" + (f" ({note})" if note else "")
+    else:
+        raise Conflict("Unsupported lifecycle stage")
+    row = repo.advance_remediation(conn, action_id, stage, actor, suffix)
+    if row is None:
+        raise Conflict("Action status changed concurrently")
+    return dict(row)
+
+
+def verify_audit(conn: psycopg.Connection) -> dict[str, Any]:
+    result = audit_chain.verify_chain(repo.audit_chain_rows(conn))
+    result["total_entries"] = result["checked"] + result["legacy_unhashed"]
+    return result
 
 
 def propose_block(conn: psycopg.Connection, app_id: int, department: str, reason: str, actor: str) -> dict:
@@ -369,7 +425,7 @@ def propose_block(conn: psycopg.Connection, app_id: int, department: str, reason
               f"Exposure {exposure['exposure_score']}/100 ({exposure['severity']}). "
               f"Reason: {reason.rstrip('.')}. Awaiting admin approval.")
     action_id = repo.insert_remediation(conn, app_id, dept["id"], repo.current_incident_id(conn, app_id, dept["id"]),
-                                        "block_domain", "pending_approval", True, detail)
+                                        "block_domain", "pending_approval", True, detail, requested_by=actor)
     if action_id is None:
         raise Conflict("A block proposal for this tool and department is already waiting for review")
     return {"id": action_id, "status": "pending_approval", "app": ctx["app_name"], "department": ctx["department"]}

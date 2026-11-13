@@ -69,6 +69,7 @@ class Settings:
     trust_proxy: bool = False
     teams_webhook_url: str | None = None
     approved_regions: tuple[str, ...] = ("MY", "SG", "EU")
+    require_dual_approval: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -102,4 +103,5 @@ def get_settings() -> Settings:
         telemetry_retention_days=max(window + 1, _int("TELEMETRY_RETENTION_DAYS", 90, 1, 3650)),
         trust_proxy=_bool("TRUST_PROXY", False),
         teams_webhook_url=webhook,
+        require_dual_approval=_bool("REQUIRE_DUAL_APPROVAL", False),
     )

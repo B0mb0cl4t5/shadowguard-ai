@@ -183,13 +183,19 @@ CREATE TABLE remediation_actions (
     action_type        VARCHAR(16)  NOT NULL
                        CHECK (action_type IN ('nudge', 'risk_ticket', 'block_domain')),
     status             VARCHAR(18)  NOT NULL
+                       CONSTRAINT remediation_actions_status_chk
                        CHECK (status IN ('executed', 'simulated', 'pending_approval',
-                                         'approved', 'rejected', 'failed')),
+                                         'approved', 'verified', 'rejected', 'failed')),
     requires_approval  BOOLEAN      NOT NULL DEFAULT FALSE,
     detail             TEXT         NOT NULL,
+    requested_by       VARCHAR(64),
     decided_by         VARCHAR(64),
     decided_at         TIMESTAMPTZ,
     decision_note      VARCHAR(500),
+    executed_by        VARCHAR(64),
+    executed_at        TIMESTAMPTZ,
+    verified_by        VARCHAR(64),
+    verified_at        TIMESTAMPTZ,
     CHECK (requires_approval = (action_type = 'block_domain'))
 );
 CREATE INDEX idx_remediation_created ON remediation_actions (created_at DESC);
@@ -217,9 +223,29 @@ CREATE TABLE audit_log (
     actor_key   CHAR(12)     NOT NULL,
     action      VARCHAR(48)  NOT NULL,
     target      VARCHAR(120) NOT NULL,
-    detail      JSONB        NOT NULL DEFAULT '{}'::jsonb
+    detail      JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    prev_hash   CHAR(64),
+    entry_hash  CHAR(64),
+    CONSTRAINT audit_log_hash_pair_chk CHECK ((prev_hash IS NULL) = (entry_hash IS NULL))
 );
 CREATE INDEX idx_audit_at ON audit_log (at DESC);
+CREATE UNIQUE INDEX uq_audit_entry_hash ON audit_log (entry_hash) WHERE entry_hash IS NOT NULL;
+
+-- Enforce append-only semantics at the database layer across all roles.
+CREATE OR REPLACE FUNCTION shadowguard_audit_immutable()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_log is append-only (% blocked)', TG_OP;
+END;
+$$;
+
+CREATE TRIGGER trg_audit_no_update_delete
+    BEFORE UPDATE OR DELETE ON audit_log
+    FOR EACH ROW EXECUTE FUNCTION shadowguard_audit_immutable();
+
+CREATE TRIGGER trg_audit_no_truncate
+    BEFORE TRUNCATE ON audit_log
+    FOR EACH STATEMENT EXECUTE FUNCTION shadowguard_audit_immutable();
 
 -- -----------------------------------------------------------------------------
 -- Shared sign-in rate limits, one count for every serverless instance (OWASP A07).

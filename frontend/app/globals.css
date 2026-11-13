@@ -154,6 +154,11 @@
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
   /* White paper and dark ink, but the charts keep their colours: the bars and heatmap fills are the data. */
   :root,
   html.light {

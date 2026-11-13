@@ -119,6 +119,55 @@ _OPT_OUT_YES = re.compile(
 
 _UNIT_DAYS = {"day": 1, "week": 7, "month": 30, "year": 365}
 
+# Supplemental compliance signals surfaced as advisories without altering the 5-factor score.
+_HUMAN_REVIEW_NO = re.compile(
+    rf"(?:\bno\s+(?:human|staff|personnel|contractor)\b[^.]{{0,60}}\b(?:review|read|inspect|view|access|examine)\b"
+    rf"|\b(?:human(?:s| reviewers?| staff| personnel| annotators?| contractors?| moderators?)?|our staff|employees?)\b"
+    rf"[^.]{{0,40}}\b(?:{_NEGATION}|cannot|can not|unable to)\b[^.]{{0,40}}\b(?:review|read|inspect|view|access|examine)\b)",
+    re.IGNORECASE,
+)
+_HUMAN_REVIEW_YES = re.compile(
+    r"\b(?:human(?:s| reviewers?| staff| personnel| annotators?| contractors?| moderators?)?|our staff|employees?)\b"
+    r"[^.]{0,80}\b(?:review|read|inspect|view|access|examine|annotate)\b"
+    r"[^.]{0,80}\b(?:prompts?|inputs?|conversations?|chats?|submissions?|uploads?|content|queries|data)\b",
+    re.IGNORECASE,
+)
+_BREACH_YES = re.compile(
+    r"\b(?:security breach|data breach|unauthorized access|security incident)\b[^.]{0,100}\b(?:notify|notification|inform|report|notice)\b"
+    r"|\b(?:notify|inform)\b[^.]{0,80}\b(?:without undue delay|within \d+\s*(?:hours?|days?)|promptly)\b[^.]{0,80}\b(?:breach|incident|unauthorized)\b",
+    re.IGNORECASE,
+)
+_ENCRYPT_NO = re.compile(
+    rf"(?:\b{_NEGATION}\b|\b(?:is|are)\s+not\b)[^.]{{0,40}}\bencrypt\w*|\bunencrypted\b|\bplain[- ]?text\b",
+    re.IGNORECASE,
+)
+_ENCRYPT_YES = re.compile(
+    r"\b(?:encrypt(?:ed|ion)?\s+(?:at rest|in transit|using\s+(?:tls|aes|ssl)|with\s+aes)|aes[- ]?256|tls\s*1\.[23])\b",
+    re.IGNORECASE,
+)
+_UNILATERAL_YES = re.compile(
+    r"\b(?:modify|change|amend|update|revise)\b[^.]{0,80}\b(?:terms|policy|privacy policy|agreement)\b"
+    r"[^.]{0,80}\b(?:at any time|without (?:prior )?notice|sole discretion)\b",
+    re.IGNORECASE,
+)
+
+ADVISORY_META: dict[str, dict[str, dict[str, str]]] = {
+    "human_review": {
+        "yes": {"label": "Human review of prompts", "risk": "warn"},
+        "no": {"label": "Human prompt review prohibited", "risk": "good"},
+    },
+    "breach_notification": {
+        "yes": {"label": "Breach notification commitment", "risk": "good"},
+    },
+    "encryption": {
+        "yes": {"label": "Encryption stated (at rest / in transit)", "risk": "good"},
+        "no": {"label": "Unencrypted handling stated", "risk": "warn"},
+    },
+    "unilateral_changes": {
+        "yes": {"label": "Terms modifiable without notice", "risk": "warn"},
+    },
+}
+
 
 @dataclass(frozen=True)
 class Claim:
@@ -131,6 +180,7 @@ class Claim:
 class ExtractionResult:
     posture: VendorPosture
     evidence: list[Claim] = field(default_factory=list)
+    advisories: list[Claim] = field(default_factory=list)
     injection_flags: list[str] = field(default_factory=list)
     discarded: list[Claim] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
@@ -160,6 +210,9 @@ class ExtractionResult:
 
     def evidence_dicts(self) -> list[dict]:
         return [{"field": c.field, "value": c.value, "quote": c.quote} for c in self.evidence]
+
+    def advisory_dicts(self) -> list[dict]:
+        return _advisory_dicts(self.advisories)
 
 
 def normalise(text: str) -> str:
@@ -299,6 +352,46 @@ def _extract_raw(sentences: list[str]) -> list[Claim]:
     return claims
 
 
+def _extract_advisory_claims(sentences: list[str]) -> list[Claim]:
+    claims: list[Claim] = []
+    if (s := _first_with_clause(sentences, _HUMAN_REVIEW_NO)) is not None:
+        claims.append(Claim("human_review", "no", _quote(s)))
+    elif (s := _first(sentences, _HUMAN_REVIEW_YES)) is not None:
+        claims.append(Claim("human_review", "yes", _quote(s)))
+    if (s := _first(sentences, _BREACH_YES)) is not None:
+        claims.append(Claim("breach_notification", "yes", _quote(s)))
+    if (s := _first_with_clause(sentences, _ENCRYPT_NO)) is not None:
+        claims.append(Claim("encryption", "no", _quote(s)))
+    elif (s := _first(sentences, _ENCRYPT_YES)) is not None:
+        claims.append(Claim("encryption", "yes", _quote(s)))
+    if (s := _first(sentences, _UNILATERAL_YES)) is not None:
+        claims.append(Claim("unilateral_changes", "yes", _quote(s)))
+    return claims
+
+
+def _advisory_dicts(claims: list[Claim]) -> list[dict]:
+    out: list[dict] = []
+    for c in claims:
+        meta = ADVISORY_META.get(c.field, {}).get(c.value, {"label": c.field, "risk": "info"})
+        out.append({
+            "field": c.field,
+            "label": meta["label"],
+            "value": c.value,
+            "risk": meta["risk"],
+            "quote": c.quote,
+        })
+    return out
+
+
+def extract_advisories(policy_text: str) -> list[dict]:
+    """Extract and quote-verify supplemental advisory clauses from a policy document."""
+    text = normalise(policy_text[:MAX_POLICY_CHARS])
+    sentences = split_sentences(text)
+    clean, flagged = screen_injection(sentences)
+    kept, _ = verify_claims(_extract_advisory_claims(clean), text, flagged)
+    return _advisory_dicts(kept)
+
+
 def verify_claims(claims: list[Claim], source_text: str, flagged: list[str]) -> tuple[list[Claim], list[Claim]]:
     """Keep only claims that quote one whole, unflagged sentence of the source.
 
@@ -403,6 +496,7 @@ def analyse_policy(policy_text: str, llm_extractor=None) -> ExtractionResult:
         seen.add(c.field)
         deduped.append(c)
     kept, dropped = verify_claims(deduped, text, flagged)
+    advisories, _ = verify_claims(_extract_advisory_claims(clean), text, flagged)
     disagreements: list[str] = []
     if extractor == "gemini":
         rules_kept, _ = verify_claims(rule_claims, text, flagged)
@@ -410,6 +504,7 @@ def analyse_policy(policy_text: str, llm_extractor=None) -> ExtractionResult:
     return ExtractionResult(
         posture=_posture_from(kept),
         evidence=kept,
+        advisories=advisories,
         injection_flags=[_quote(s) for s in flagged],
         discarded=dropped + invalid,
         conflicts=find_conflicts(clean),

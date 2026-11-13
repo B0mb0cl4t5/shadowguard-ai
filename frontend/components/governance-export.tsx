@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 
+import { verifyAuditChain } from "@/lib/actions";
 import { summarizeAppPdpa } from "@/lib/pdpa";
-import type { Dashboard } from "@/lib/types";
+import { failureMessage } from "@/lib/request-timeout";
+import type { AuditVerifyResult, Dashboard, Role } from "@/lib/types";
 import type { Toast } from "@/lib/use-toast";
 
 import { Badge } from "./ui/badge";
@@ -17,7 +19,7 @@ function blockedDomains(data: Dashboard): { approved: string[]; staged: string[]
   const stagedSet = new Set<string>();
   for (const r of data.remediations) {
     if (r.action_type !== "block_domain") continue;
-    if (r.status === "approved") approvedSet.add(r.domain);
+    if (r.status === "approved" || r.status === "executed" || r.status === "verified") approvedSet.add(r.domain);
     else if (r.status === "pending_approval") stagedSet.add(r.domain);
   }
   for (const d of approvedSet) stagedSet.delete(d);
@@ -151,17 +153,44 @@ export function downloadTextFile(filename: string, content: string, mime = "text
 
 export function GovernanceExport({
   data,
+  role,
   onToast,
   className = "",
 }: {
   data: Dashboard;
+  role?: Role;
   onToast: (t: Omit<Toast, "id" | "leaving">) => void;
   className?: string;
 }) {
   const [target, setTarget] = useState<FirewallTarget>("fortigate");
+  const [auditState, setAuditState] = useState<AuditVerifyResult | null>(null);
+  const [verifyingAudit, setVerifyingAudit] = useState(false);
   const { approved, staged } = blockedDomains(data);
   const configText = target === "fortigate" ? buildFortigateConfig(data) : buildSquidAcl(data);
   const configFilename = target === "fortigate" ? "shadowguard-fortigate-blocklist.conf" : "shadowguard-squid-blocked.acl";
+
+  async function runAuditVerify() {
+    setVerifyingAudit(true);
+    try {
+      const result = await verifyAuditChain();
+      setAuditState(result);
+      onToast({
+        title: result.intact ? "Audit hash chain verified" : "Audit chain break detected",
+        description: result.intact
+          ? `Checked ${result.checked} chained audit entries${result.legacy_unhashed ? ` (${result.legacy_unhashed} pre-upgrade)` : ""}. Head ${result.head_hash?.slice(0, 12) ?? "genesis"}.`
+          : `Integrity mismatch at entry #${result.first_broken_id ?? "?"} (${result.reason ?? "unknown"}).`,
+        tone: result.intact ? "success" : "danger",
+      });
+    } catch (e) {
+      onToast({
+        title: "Audit verification failed",
+        description: failureMessage(e, "Could not verify the audit log."),
+        tone: "danger",
+      });
+    } finally {
+      setVerifyingAudit(false);
+    }
+  }
 
   async function copyConfig() {
     try {
@@ -239,6 +268,25 @@ export function GovernanceExport({
       <SubCard className="max-h-56 overflow-x-auto overflow-y-auto p-3.5 font-mono text-xs leading-relaxed text-ink2">
         <pre>{configText}</pre>
       </SubCard>
+      {role === "admin" && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-rule pt-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-muted">
+            <span className="font-medium text-ink2">Tamper-evident audit chain</span>
+            {auditState ? (
+              <Badge tone={auditState.intact ? "success" : "danger"}>
+                {auditState.intact
+                  ? `Intact · ${auditState.checked} hashed`
+                  : `Broken at #${auditState.first_broken_id ?? "?"}`}
+              </Badge>
+            ) : (
+              <span>SHA-256 append-only ledger protected by database triggers.</span>
+            )}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => void runAuditVerify()} disabled={verifyingAudit}>
+            {verifyingAudit ? "Verifying…" : "Verify audit chain"}
+          </Button>
+        </div>
+      )}
     </Panel>
   );
 }

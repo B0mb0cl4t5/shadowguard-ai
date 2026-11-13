@@ -7,6 +7,7 @@ drives the live API (``service.py``) and the deterministic seed builder
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -15,6 +16,52 @@ from .scoring import Severity
 NUDGE_COOLDOWN = timedelta(hours=24)
 # After an admin rejects a block, don't propose it again for this long.
 REJECTION_QUIET_PERIOD = timedelta(days=7)
+
+_COMPOUND_SLDS = frozenset({"co.uk", "org.uk", "ac.uk", "com.my", "edu.my", "gov.my", "net.my", "com.au", "com.sg"})
+_AI_HOST_TOKENS = re.compile(
+    r"(?:^|[.-])(chatgpt|openai|claude|anthropic|gemini|copilot|perplexity|deepseek|mistral|cohere|huggingface|"
+    r"midjourney|runwayml|elevenlabs|genai|gpt|llm)(?:[.-]|$)",
+    re.IGNORECASE,
+)
+_IP_LITERAL = re.compile(r"^[\d.]+$")
+_AI_UPPER_PARTS = frozenset({"ai", "gpt", "llm", "ml"})
+
+
+def registrable_domain(host: str) -> str:
+    """Collapse a subdomain to its registrable root domain (heuristic suffix table)."""
+    clean = host.strip().lower().rstrip(".")
+    if not clean or _IP_LITERAL.fullmatch(clean):
+        return clean
+    labels = [p for p in clean.split(".") if p]
+    if len(labels) <= 2:
+        return ".".join(labels)
+    if ".".join(labels[-2:]) in _COMPOUND_SLDS and len(labels) >= 3:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+def looks_like_ai(host: str) -> bool:
+    """Heuristic detector for uncatalogued AI hostnames during telemetry ingestion."""
+    clean = host.strip().lower().rstrip(".")
+    if "." not in clean or _IP_LITERAL.fullmatch(clean):
+        return False
+    if clean.endswith(".ai"):
+        return True
+    return bool(_AI_HOST_TOKENS.search(clean))
+
+
+def display_name_for_domain(domain: str) -> str:
+    """Produce a readable tool/vendor label from a discovered registrable domain."""
+    labels = [p for p in registrable_domain(domain).split(".") if p]
+    if not labels:
+        return domain
+    stem = labels[0]
+    parts = [p for p in re.split(r"[-_]+", stem) if p]
+    formatted = [p.upper() if p.lower() in _AI_UPPER_PARTS else p.capitalize() for p in parts]
+    base = " ".join(formatted) or stem.capitalize()
+    if len(labels) > 1 and labels[-1] == "ai" and not base.upper().endswith(" AI"):
+        return f"{base} AI"
+    return base
 
 
 def match_domain(domain: str, app_domains: dict[str, int]) -> int | None:

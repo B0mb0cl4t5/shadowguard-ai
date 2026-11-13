@@ -626,6 +626,21 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
       <div className="mx-auto w-full max-w-[1500px] px-4 pb-24 pt-5 sm:px-6 lg:pb-12 dense:flex dense:min-h-0 dense:flex-1 dense:flex-col dense:pb-3 dense:pt-3">
         <p className="mb-4 text-base text-ink2 xl:hidden">{summary}</p>
 
+        <section aria-label="Printable executive governance summary" className="hidden print:block mb-4 border-b border-line pb-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">ShadowGuard AI — Executive Governance Brief</h2>
+              <p className="text-xs text-muted">Metadata-only AI traffic governance · PDPA (Malaysia Act 709) posture</p>
+            </div>
+            <p className="font-mono text-xs text-muted">{new Date(data.generated_at).toLocaleString()}</p>
+          </div>
+          <p className="mt-2 text-sm text-ink2">
+            Exposure Index <span className="font-mono font-semibold text-ink">{data.kpis.exposure_index}/100</span> ·{" "}
+            <span className="font-mono">{data.kpis.shadow_ai_apps}</span> unapproved AI tools ({data.severity_breakdown.critical} Critical,{" "}
+            {data.severity_breakdown.high} High) · <span className="font-mono">{pending.length}</span> awaiting block decision.
+          </p>
+        </section>
+
         <KpiRow data={data} />
 
         <div className="dense:flex dense:min-h-0 dense:flex-1 dense:flex-col">
@@ -754,8 +769,16 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
             <TabPanel id="reviews">
               <div className="grid grid-cols-12 gap-6">
                 <DecisionQueue detailed pending={pending} data={data} role={role} now={now} onReview={setReview} className="col-span-12" />
-                <GovernanceExport data={data} onToast={toast} className="col-span-12" />
-                <RemediationLog items={data.remediations} role={role} now={now} onReview={setReview} className="col-span-12" />
+                <GovernanceExport data={data} role={role} onToast={toast} className="col-span-12" />
+                <RemediationLog
+                  items={data.remediations}
+                  role={role}
+                  now={now}
+                  onReview={setReview}
+                  onChanged={() => void refresh()}
+                  onToast={toast}
+                  className="col-span-12"
+                />
               </div>
             </TabPanel>
           )}

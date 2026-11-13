@@ -10,6 +10,9 @@ Route → role matrix (OWASP A01, Broken Access Control):
     POST /api/v1/vendors/{id}/analyze             admin  (persist=false → dry run, no writes)
     POST /api/v1/apps/{id}/block-proposals        admin  (queues a proposal; never blocks by itself)
     POST /api/v1/remediations/{id}/decision       admin
+    POST /api/v1/remediations/{id}/advance        admin
+    GET  /api/v1/audit                            admin
+    GET  /api/v1/audit/verify                     admin
     POST /api/v1/pipeline/recompute               admin
     POST /api/v1/rate-limit                       viewer, admin  (the dashboard server's shared sign-in limits)
 """
@@ -30,8 +33,8 @@ from . import repository as repo
 from .config import get_settings
 from .db import DatabaseNotConfigured, get_connection
 from .fetcher import FetchError, UnsafeURLError, fetch_policy_text
-from .models import (AnalyseRequest, BlockProposalRequest, DecisionRequest, RateLimitRequest, Severity, SortKey,
-                     TelemetryBatch)
+from .models import (AdvanceRemediationRequest, AnalyseRequest, BlockProposalRequest, DecisionRequest,
+                     RateLimitRequest, Severity, SortKey, TelemetryBatch)
 from .scoring import severity_for
 from .security import SECURITY_HEADERS, Principal, require_role
 
@@ -242,11 +245,46 @@ def decide(action_id: Id, body: DecisionRequest, principal: Principal = Depends(
             result = service.decide_remediation(conn, action_id, body.decision, actor, body.note)
         except service.NotFound:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Remediation action not found") from None
+        except service.Forbidden as exc:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from None
         except service.Conflict as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
         repo.audit(conn, principal.role, principal.key_fingerprint, f"remediation.{body.decision}",
                    f"remediation:{action_id}", {"note_len": len(body.note)})
         return result
+
+
+@app.post("/api/v1/remediations/{action_id}/advance")
+def advance_remediation(action_id: Id, body: AdvanceRemediationRequest, principal: Principal = Depends(admin)):
+    actor = f"admin:{principal.key_fingerprint[:8]}"
+    with get_connection() as conn:
+        try:
+            result = service.advance_remediation(conn, action_id, body.stage, actor, body.note)
+        except service.NotFound:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Remediation action not found") from None
+        except service.Conflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+        repo.audit(conn, principal.role, principal.key_fingerprint, f"remediation.{body.stage}",
+                   f"remediation:{action_id}", {"note_len": len(body.note)})
+        return result
+
+
+@app.get("/api/v1/audit")
+def list_audit(
+    _: Principal = Depends(admin),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+):
+    with get_connection() as conn:
+        return {
+            "entries": repo.list_audit(conn, limit),
+            "verification": service.verify_audit(conn),
+        }
+
+
+@app.get("/api/v1/audit/verify")
+def verify_audit(_: Principal = Depends(admin)):
+    with get_connection() as conn:
+        return service.verify_audit(conn)
 
 
 @app.post("/api/v1/pipeline/recompute")
