@@ -629,15 +629,19 @@ export function DashboardShell({ initial, role, demo = false }: { initial: Dashb
         <section aria-label="Printable executive governance summary" className="hidden print:block mb-4 border-b border-line pb-3">
           <div className="flex items-baseline justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-ink">ShadowGuard AI — Executive Governance Brief</h2>
-              <p className="text-xs text-muted">Metadata-only AI traffic governance · PDPA (Malaysia Act 709) posture</p>
+              <h2 className="text-lg font-semibold text-ink">ShadowGuard AI executive brief</h2>
+              <p className="text-xs text-muted">Metadata-only monitoring of AI tool use, with each vendor&apos;s PDPA (Act 709) position</p>
             </div>
-            <p className="font-mono text-xs text-muted">{new Date(data.generated_at).toLocaleString()}</p>
+            {/* Written the same on the server and in the browser (UTC, no locale), so hydration matches. */}
+            <p className="font-mono text-xs text-muted">Data as of {new Date(data.generated_at).toISOString().slice(0, 16).replace("T", " ")} UTC</p>
           </div>
           <p className="mt-2 text-sm text-ink2">
-            Exposure Index <span className="font-mono font-semibold text-ink">{data.kpis.exposure_index}/100</span> ·{" "}
-            <span className="font-mono">{data.kpis.shadow_ai_apps}</span> unapproved AI tools ({data.severity_breakdown.critical} Critical,{" "}
-            {data.severity_breakdown.high} High) · <span className="font-mono">{pending.length}</span> awaiting block decision.
+            Exposure index <span className="font-mono font-semibold text-ink">{data.kpis.exposure_index}/100</span>.{" "}
+            <span className="font-mono">{data.kpis.shadow_ai_apps}</span> unapproved AI tools (
+            <span className="font-mono">{data.severity_breakdown.critical}</span> Critical,{" "}
+            <span className="font-mono">{data.severity_breakdown.high}</span> High).{" "}
+            <span className="font-mono">{pending.length}</span> block {pending.length === 1 ? "proposal waits" : "proposals wait"} for a
+            decision.
           </p>
         </section>
 

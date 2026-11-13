@@ -42,5 +42,16 @@ test("audit verification waits for server response and routes guard rate limits 
 test("print view includes an executive summary header hidden on screen", () => {
   const shellSrc = read("components/dashboard-shell.tsx");
   assert.match(shellSrc, /className="hidden print:block[^"]*"/);
-  assert.match(shellSrc, /Executive Governance Brief/);
+  assert.match(shellSrc, /ShadowGuard AI executive brief/);
+  // The server renders in UTC and the browser in local time, so a locale date would break hydration.
+  const brief = shellSrc.slice(shellSrc.indexOf('className="hidden print:block'), shellSrc.indexOf("</section>", shellSrc.indexOf('className="hidden print:block')));
+  assert.doesNotMatch(brief, /toLocale(?:String|DateString|TimeString)\(/);
+});
+
+test("the drawer still reports a block once its rule is marked applied or checked", () => {
+  const drawer = read("components/vendor-drawer.tsx");
+  const status = drawer.slice(drawer.indexOf("function BlockStatus"));
+  for (const s of ['departments("approved")', 'departments("executed")', 'departments("verified")']) {
+    assert.ok(status.includes(s), `BlockStatus reads ${s}`);
+  }
 });

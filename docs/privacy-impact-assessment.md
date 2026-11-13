@@ -54,7 +54,7 @@ Anyone whose traffic passes through the proxy, firewall feed or laptop collector
 |---|---|---|
 | Someone works out who a hash belongs to | Secret salt at the source; hashes never shown; deleted after the retention period | **Decide:** whether to hide counts below a minimum (for example under 3), since a count of 1 in a small department can point to a person. ShadowGuard doesn't do this yet. |
 | Used to watch individuals | No per-person view, export or live feed; the live feed excludes hashes | **Decide:** a written purpose limitation that rules out performance monitoring |
-| Blocking gets in the way of legitimate work | Blocks are only proposed; a person approves, marks the firewall rule applied (`executed`), and verifies enforcement (`verified`); nudges suggest an approved tool | Exported firewall rules still need applying at the proxy unless an API integration is connected |
+| Blocking gets in the way of legitimate work | Blocks are only proposed; a person approves, marks the firewall rule applied (`executed`), and marks the block as checked (`verified`); nudges suggest an approved tool | Exported firewall rules still need applying at the proxy unless an API integration is connected |
 | A secret leaks | Procedure in [SECURITY.md](../SECURITY.md#if-a-secret-leaks) | Breach notification per the DPO's procedure |
 | Demo sign-in left on | Off by default; a "Demo mode" badge shows while it's on; each use is logged | Must be off on any deployment holding real data |
 

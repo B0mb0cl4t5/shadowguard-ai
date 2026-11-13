@@ -24,7 +24,8 @@ const STATUS_META: Record<RemediationStatus, { label: string; tone: Tone }> = {
   simulated: { label: "Simulated", tone: "neutral" },
   pending_approval: { label: "Awaiting approval", tone: "warning" },
   approved: { label: "Approved", tone: "success" },
-  verified: { label: "Verified blocked", tone: "success" },
+  // An administrator's own check, recorded: ShadowGuard doesn't test the proxy itself.
+  verified: { label: "Block checked", tone: "success" },
   rejected: { label: "Dismissed", tone: "neutral" },
   failed: { label: "Failed", tone: "danger" },
 };
@@ -126,8 +127,11 @@ function LogItem({
     try {
       await advanceRemediation(item.id, stage);
       onToast?.({
-        title: stage === "execute" ? "Firewall rule marked applied" : "Domain block verified",
-        description: `${item.app} (${item.department})`,
+        title: stage === "execute" ? "Rule marked as applied" : "Block marked as checked",
+        description:
+          stage === "execute"
+            ? `${item.app} for ${item.department}. This records that the rule is in place: ShadowGuard doesn't push it to the proxy.`
+            : `${item.app} for ${item.department}. This records your check: ShadowGuard doesn't test the proxy itself.`,
         tone: "success",
       });
       onChanged?.();
@@ -170,12 +174,17 @@ function LogItem({
         {(item.status !== "simulated" || item.decided_by) && (
           <div className="mt-2 flex flex-wrap items-center gap-2 dense:mt-1 dense:flex-nowrap">
             <Badge tone={status.tone}>{statusLabel}</Badge>
-            {item.decided_by && <span className="font-mono text-xs text-muted dense:hidden">{item.decided_by}</span>}
+            {item.decided_by && (
+              <span className="font-mono text-xs text-muted dense:hidden">
+                {/* Labelled once a block has later stages, so three admin keys in a row read as who did what. */}
+                {item.executed_by || item.verified_by ? `approved by ${item.decided_by}` : item.decided_by}
+              </span>
+            )}
             {!clamp && item.executed_by && (
-              <span className="font-mono text-xs text-muted">applied by {item.executed_by}</span>
+              <span className="font-mono text-xs text-muted">marked applied by {item.executed_by}</span>
             )}
             {!clamp && item.verified_by && (
-              <span className="font-mono text-xs text-muted">verified by {item.verified_by}</span>
+              <span className="font-mono text-xs text-muted">checked by {item.verified_by}</span>
             )}
             {pending && role === "admin" && (
               <Button
@@ -195,8 +204,9 @@ function LogItem({
                 className="ml-auto"
                 disabled={advancing}
                 onClick={() => void advance("execute")}
+                aria-label={`Mark the block rule for ${item.app}, ${item.department}, as applied at the proxy`}
               >
-                {advancing ? "Updating…" : "Mark rule applied"}
+                {advancing ? "Saving…" : "Mark rule applied"}
               </Button>
             )}
             {!clamp && role === "admin" && item.action_type === "block_domain" && item.status === "executed" && (
@@ -206,8 +216,9 @@ function LogItem({
                 className="ml-auto"
                 disabled={advancing}
                 onClick={() => void advance("verify")}
+                aria-label={`Mark the block of ${item.app} for ${item.department} as checked`}
               >
-                {advancing ? "Verifying…" : "Verify block"}
+                {advancing ? "Saving…" : "Mark block checked"}
               </Button>
             )}
           </div>

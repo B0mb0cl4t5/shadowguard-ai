@@ -16,7 +16,7 @@ export async function decideRemediation(id: number, decision: "approve" | "rejec
   }
 }
 
-/** Queues a block proposal for one tool in one department and returns its id. Deciding it stays in the review dialog. */
+/** Records that an approved block's rule was applied at the proxy ("execute"), or that the block was checked ("verify"). */
 export async function advanceRemediation(
   actionId: number,
   stage: "execute" | "verify",
@@ -47,6 +47,7 @@ export async function verifyAuditChain(): Promise<AuditVerifyResult> {
   return (await res.json()) as AuditVerifyResult;
 }
 
+/** Queues a block proposal for one tool in one department and returns its id. Deciding it stays in the review dialog. */
 export async function proposeBlock(appId: number, department: string, reason: string): Promise<number> {
   const res = await fetch(`/api/apps/${appId}/block-proposals`, {
     method: "POST",

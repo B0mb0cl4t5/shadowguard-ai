@@ -50,6 +50,19 @@ def looks_like_ai(host: str) -> bool:
     return bool(_AI_HOST_TOKENS.search(clean))
 
 
+def discovery_root(host: str) -> str | None:
+    """The registrable domain to add as a new tool for an unknown host, or None.
+
+    Only when that domain itself looks like an AI service. An AI word in a subdomain of a general
+    platform (``myres.openai.azure.com``, ``copilot.vendor.io``) must not turn the whole platform
+    (``azure.com``) into a shadow AI tool that every later visit to it would count against.
+    """
+    if not looks_like_ai(host):
+        return None
+    root = registrable_domain(host)
+    return root if looks_like_ai(root) else None
+
+
 def display_name_for_domain(domain: str) -> str:
     """Produce a readable tool/vendor label from a discovered registrable domain."""
     labels = [p for p in registrable_domain(domain).split(".") if p]

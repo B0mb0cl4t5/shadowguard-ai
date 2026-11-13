@@ -113,7 +113,7 @@ The usernames are `admin` and `viewer` unless you set `DASHBOARD_ADMIN_USERNAME`
    | `GEMINI_API_KEY`, `GEMINI_MODEL` | optional |
    | `TRUST_PROXY` | `true` on Vercel (see below) |
    | `TELEMETRY_RETENTION_DAYS` | optional: days raw traffic events are kept, default `90` (never shorter than the exposure window) |
-   | `REQUIRE_DUAL_APPROVAL` | optional: `true` enforces four-eyes separation between the admin actor proposing a block and the admin actor approving it (requires distinct per-admin API keys) |
+   | `REQUIRE_DUAL_APPROVAL` | optional: `true` enforces four-eyes separation between the admin actor proposing a block and the admin actor approving it (requires distinct per-admin API keys: every dashboard admin shares one key, so with it on, a block proposed by hand from the dashboard has to be approved through the API with a second admin key) |
    | `DEMO_SIGN_IN` | optional: `admin` or `viewer` adds a one-click "Open the demo" button. **Anyone with the link can then sign in**, so set it only while recording a demo, then delete it and redeploy |
 
    Do **not** set `SHADOWGUARD_API_URL`. The service binding generates it.

@@ -522,25 +522,46 @@ def advance_remediation(conn: psycopg.Connection, action_id: int, stage: str, ac
     ).fetchone()
 
 
-def upsert_discovered_app(conn: psycopg.Connection, domain: str, app_name: str, vendor_name: str) -> tuple[int, bool]:
-    """Register an uncatalogued AI-like domain as an unverified tool idempotently."""
+DISCOVERED_NOTE = "Auto-discovered uncatalogued AI domain from network telemetry; policy not yet analyzed."
+
+
+def count_discovered_apps(conn: psycopg.Connection) -> int:
+    """How many tools auto-discovery has added so far (they carry its note on their vendor)."""
+    return conn.execute(
+        "SELECT count(*) AS n FROM saas_apps a JOIN vendors v ON v.id = a.vendor_id "
+        "WHERE v.verification_notes @> %s",
+        (Jsonb([DISCOVERED_NOTE]),),
+    ).fetchone()["n"]
+
+
+def upsert_discovered_app(conn: psycopg.Connection, domain: str, app_name: str, vendor_name: str,
+                          posture_score: int) -> tuple[int, bool]:
+    """Register an uncatalogued AI-like domain as an unverified tool idempotently.
+
+    It always gets a vendor of its own. Reusing a catalogued vendor with the same name would hand a
+    look-alike domain that vendor's reviewed (possibly Low) posture.
+    """
     conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", (domain,))
     existing = conn.execute("SELECT id FROM saas_apps WHERE domain = %s", (domain,)).fetchone()
     if existing is not None:
         return existing["id"], False
-    vendor = conn.execute("SELECT id FROM vendors WHERE lower(name) = lower(%s) LIMIT 1", (vendor_name,)).fetchone()
-    if vendor is None:
+    vendor = None
+    for name in (vendor_name, f"{vendor_name} ({domain})"):
         vendor = conn.execute(
             """
             INSERT INTO vendors (name, website, posture_score, verification_status, verification_notes)
-            VALUES (%s, %s, 58, 'unverified', %s)
+            VALUES (%s, %s, %s, 'unverified', %s)
+            ON CONFLICT (name) DO NOTHING
             RETURNING id
             """,
-            (
-                vendor_name[:120],
-                f"https://{domain}"[:200],
-                Jsonb(["Auto-discovered uncatalogued AI domain from network telemetry; policy not yet analyzed."]),
-            ),
+            (name[:120], f"https://{domain}"[:200], posture_score, Jsonb([DISCOVERED_NOTE])),
+        ).fetchone()
+        if vendor is not None:
+            break
+    if vendor is None:
+        # Both names are taken: the second can only be an earlier discovery of this same domain.
+        vendor = conn.execute(
+            "SELECT id FROM vendors WHERE name = %s", (f"{vendor_name} ({domain})"[:120],)
         ).fetchone()
     inserted = conn.execute(
         """

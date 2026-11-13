@@ -23,7 +23,7 @@ from .idp import analyse_policy, extract_advisories
 from .models import TelemetryEvent
 from .notify import send_nudge
 from .pipeline import (
-    PairState, aggregate, display_name_for_domain, incident_text, looks_like_ai,
+    PairState, aggregate, discovery_root, display_name_for_domain, incident_text,
     match_domain, nudge_message, plan_response, registrable_domain, ticket_text,
 )
 from .scoring import VendorPosture, exposure, exposure_index, severity_for, vendor_posture
@@ -58,9 +58,22 @@ class Forbidden(PermissionError):
 
 # ------------------------------------------------------------------ stage 1: discover
 
+# Auto-discovery lets whoever holds an ingest key add tools to the catalogue, so it is capped:
+# a few new tools per batch and a ceiling overall. Past either, the domain is counted as unmatched
+# and an administrator adds it to the catalogue properly.
+MAX_NEW_TOOLS_PER_BATCH = 3
+MAX_AUTO_DISCOVERED_TOOLS = 30
+# A discovered vendor starts where every unread vendor starts: all answers unknown, unverified.
+UNREAD_POSTURE = vendor_posture(VendorPosture(), verified=False).score
+
+
 def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> dict[str, Any]:
     departments = repo.departments_by_name(conn)
     domains = repo.app_domain_index(conn)
+    # A new host under a catalogued tool's own domain (api.openai.com beside chat.openai.com) is the
+    # same vendor, not a new shadow tool, so it is never added a second time.
+    catalogued_roots = {registrable_domain(d) for d in domains}
+    room: int | None = None  # how many more tools may be added overall, read once when first needed
     rows, touched = [], set()
     unknown_departments, unmatched, discovered = 0, 0, 0
     for ev in events:
@@ -70,17 +83,17 @@ def ingest_telemetry(conn: psycopg.Connection, events: list[TelemetryEvent]) -> 
             continue
         app_id = match_domain(ev.domain, domains)
         if app_id is None:
-            if looks_like_ai(ev.domain):
-                root = registrable_domain(ev.domain)
-                label = display_name_for_domain(root)
-                app_id, created = repo.upsert_discovered_app(conn, root, label, label)
-                domains[root] = app_id
-                clean_host = ev.domain.lower().rstrip(".")
-                if clean_host != root:
-                    domains[clean_host] = app_id
-                if created:
-                    discovered += 1
-            else:
+            root = discovery_root(ev.domain)
+            if root is not None and root not in catalogued_roots and discovered < MAX_NEW_TOOLS_PER_BATCH:
+                if room is None:
+                    room = MAX_AUTO_DISCOVERED_TOOLS - repo.count_discovered_apps(conn)
+                if room > discovered:
+                    label = display_name_for_domain(root)
+                    app_id, created = repo.upsert_discovered_app(conn, root, label, label, UNREAD_POSTURE)
+                    domains[root] = app_id
+                    if created:
+                        discovered += 1
+            if app_id is None:
                 unmatched += 1
                 continue
         touched.add((app_id, dept["id"]))
@@ -356,7 +369,11 @@ def decide_remediation(conn: psycopg.Connection, action_id: int, decision: str, 
         and action.get("requested_by")
         and action["requested_by"] == actor
     ):
-        raise Forbidden("Dual approval is enabled: the administrator who proposed a block cannot approve it")
+        # The dashboard sends every admin's request with one shared key, so from the dashboard this
+        # refusal can't be cleared by a second person: say so, rather than leave the admin guessing.
+        raise Forbidden("Dual approval is on, and this block was proposed with the same administrator key. "
+                        "It has to be approved with a different admin key, through the API: every dashboard "
+                        "admin shares one key. You can still dismiss it here.")
     if decision == "approve":
         suffix = (" — APPROVED: domain added to the proxy block list "
                   "(ready to apply at FortiGate/Squid perimeter).")
@@ -379,14 +396,18 @@ def advance_remediation(conn: psycopg.Connection, action_id: int, stage: str, ac
         raise NotFound("remediation")
     if action["action_type"] != "block_domain":
         raise Conflict("Only domain block actions support execution lifecycle stages")
+    # Both stages record what an administrator says they did at the proxy. ShadowGuard neither pushes
+    # the rule nor tests the block, so the wording says "marked", never "verified".
     if stage == "execute":
         if action["status"] != "approved":
-            raise Conflict(f"Cannot mark executed while action is '{action['status']}'")
-        suffix = f" — EXECUTED by {actor}" + (f" ({note})" if note else "")
+            raise Conflict(f"The rule can be marked as applied only once the block is approved. "
+                           f"This one is '{action['status']}'.")
+        suffix = f" — Rule marked as applied at the proxy by {actor}" + (f" ({note})" if note else "") + "."
     elif stage == "verify":
         if action["status"] != "executed":
-            raise Conflict(f"Cannot verify block while action is '{action['status']}'")
-        suffix = f" — VERIFIED blocked by {actor}" + (f" ({note})" if note else "")
+            raise Conflict(f"The block can be marked as checked only once its rule is marked as applied. "
+                           f"This one is '{action['status']}'.")
+        suffix = f" — Block marked as checked by {actor}" + (f" ({note})" if note else "") + "."
     else:
         raise Conflict("Unsupported lifecycle stage")
     row = repo.advance_remediation(conn, action_id, stage, actor, suffix)

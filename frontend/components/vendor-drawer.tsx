@@ -495,20 +495,31 @@ function ProposeBlockForm({
 function BlockStatus({ blocks, unread, canPropose }: { blocks: Remediation[]; unread: boolean; canPropose: boolean }) {
   const departments = (status: Remediation["status"]) => blocks.filter((b) => b.status === status).map((b) => b.department);
   const pending = departments("pending_approval");
+  // An approved block moves on to "executed" (rule marked applied) and "verified" (block marked checked).
   const approved = departments("approved");
+  const applied = departments("executed");
+  const checked = departments("verified");
+  const blocked = approved.length + applied.length + checked.length > 0;
   const rejected = departments("rejected");
 
   let text: string;
-  if (pending.length > 0) text = `Block proposed for ${listOf(pending)}. It waits for an administrator's decision.`;
-  else if (approved.length > 0) text = `Blocked at the proxy for ${listOf(approved)}.`;
-  else if (rejected.length > 0) text = `A block for ${listOf(rejected)} was dismissed. The tool stays reachable.`;
+  if (pending.length > 0 || blocked) {
+    text = [
+      pending.length > 0 && `Block proposed for ${listOf(pending)}. It waits for an administrator's decision.`,
+      checked.length > 0 && `Block marked as checked at the proxy for ${listOf(checked)}.`,
+      applied.length > 0 && `Block rule marked as applied at the proxy for ${listOf(applied)}.`,
+      approved.length > 0 && `Block approved for ${listOf(approved)}. Its rule hasn't been marked as applied at the proxy yet.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  } else if (rejected.length > 0) text = `A block for ${listOf(rejected)} was dismissed. The tool stays reachable.`;
   else if (unread) text = "This vendor's policy hasn't been read yet.";
   else if (canPropose) text = "No block proposed. One is proposed automatically at Critical exposure, and you can propose one yourself.";
   else text = "No block proposed. One is proposed automatically when a department's exposure reaches Critical.";
 
   return (
     <p role="status" className="flex min-w-64 flex-1 items-start gap-2 text-xs text-ink2">
-      <BlockIcon size={14} className={`mt-0.5 shrink-0 ${pending.length > 0 ? "text-warning" : approved.length > 0 ? "text-negative" : "text-muted"}`} />
+      <BlockIcon size={14} className={`mt-0.5 shrink-0 ${pending.length > 0 ? "text-warning" : blocked ? "text-negative" : "text-muted"}`} />
       <span>{text}</span>
     </p>
   );

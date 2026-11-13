@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +15,7 @@ from shadowguard import audit, service
 from shadowguard.config import Settings
 from shadowguard.idp import analyse_policy, extract_advisories
 from shadowguard.models import AdvanceRemediationRequest
-from shadowguard.pipeline import display_name_for_domain, looks_like_ai, registrable_domain
+from shadowguard.pipeline import discovery_root, display_name_for_domain, looks_like_ai, registrable_domain
 from shadowguard.scoring import vendor_posture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -278,11 +277,13 @@ def test_ingest_telemetry_auto_discovers_ai_domains_only(monkeypatch):
     monkeypatch.setattr(service.repo, "departments_by_name", lambda conn: {"engineering": {"id": 10, "name": "Engineering"}})
     monkeypatch.setattr(service.repo, "app_domain_index", lambda conn: {"known.ai": 1})
 
-    def fake_upsert(conn, domain: str, app_name: str, vendor_name: str):
+    def fake_upsert(conn, domain: str, app_name: str, vendor_name: str, posture_score: int):
+        assert posture_score == service.UNREAD_POSTURE
         discovered_calls.append((domain, app_name, vendor_name))
         return 42, True
 
     monkeypatch.setattr(service.repo, "upsert_discovered_app", fake_upsert)
+    monkeypatch.setattr(service.repo, "count_discovered_apps", lambda conn: 0)
     monkeypatch.setattr(service.repo, "insert_events", lambda conn, rows: inserted_rows.extend(rows))
     monkeypatch.setattr(service, "prune_old_telemetry", lambda conn: 0)
     monkeypatch.setattr(service, "recompute_pairs", lambda conn, pairs: rescored.extend(pairs) or 0)
@@ -301,6 +302,73 @@ def test_ingest_telemetry_auto_discovers_ai_domains_only(monkeypatch):
     assert summary["unmatched_domains"] == 1
     assert discovered_calls == [("freshbot.ai", "Freshbot AI", "Freshbot AI")]
     assert rescored == [(42, 10)]
+
+
+def test_unread_posture_matches_the_real_catalogue():
+    # Real catalogue vendors start at the rubric's unread score (002_real_ai_tools.sql); discoveries match it.
+    migration = (ROOT / "database" / "migrations" / "002_real_ai_tools.sql").read_text(encoding="utf-8")
+    assert f"(posture {service.UNREAD_POSTURE}, unverified)" in migration
+
+
+@pytest.mark.parametrize("host,root", [
+    ("api.freshbot.ai", "freshbot.ai"),
+    ("chat.acme-gpt.com", "acme-gpt.com"),
+    ("studio.team-llm.co.uk", "team-llm.co.uk"),
+    # An AI word in a subdomain of a general platform must not turn the platform into a tool.
+    ("myres.openai.azure.com", None),
+    ("copilot.vendor.io", None),
+    ("genai.example.org", None),
+    ("mail.google.com", None),
+])
+def test_discovery_root_never_collapses_a_general_platform(host: str, root: str | None):
+    assert discovery_root(host) == root
+
+
+def _discovery_harness(monkeypatch, catalogue: dict[str, int], already_discovered: int = 0):
+    """ingest_telemetry with the database stubbed out; returns the list of tools it tried to add."""
+    added: list[str] = []
+
+    def fake_upsert(conn, domain, app_name, vendor_name, posture_score):
+        added.append(domain)
+        return 100 + len(added), True
+
+    monkeypatch.setattr(service.repo, "departments_by_name", lambda conn: {"engineering": {"id": 10, "name": "Engineering"}})
+    monkeypatch.setattr(service.repo, "app_domain_index", lambda conn: dict(catalogue))
+    monkeypatch.setattr(service.repo, "upsert_discovered_app", fake_upsert)
+    monkeypatch.setattr(service.repo, "count_discovered_apps", lambda conn: already_discovered)
+    monkeypatch.setattr(service.repo, "insert_events", lambda conn, rows: None)
+    monkeypatch.setattr(service, "prune_old_telemetry", lambda conn: 0)
+    monkeypatch.setattr(service, "recompute_pairs", lambda conn, pairs: 0)
+    monkeypatch.setattr(service, "refresh_snapshot", lambda conn: None)
+    return added
+
+
+def _events(*domains: str):
+    from shadowguard.models import TelemetryEvent
+
+    now = datetime.now(timezone.utc)
+    return [TelemetryEvent(observed_at=now, department="Engineering", user_hash="a" * 64, domain=d, bytes_out=64)
+            for d in domains]
+
+
+def test_discovery_skips_hosts_under_a_catalogued_tools_domain(monkeypatch):
+    added = _discovery_harness(monkeypatch, {"chat.openai.com": 1})
+    summary = service.ingest_telemetry(None, _events("api.openai.com", "x.openai.azure.com"))  # type: ignore[arg-type]
+    assert added == []  # OpenAI is already catalogued, and azure.com is not an AI service
+    assert summary["unmatched_domains"] == 2 and summary["auto_discovered_apps"] == 0
+
+
+def test_discovery_is_capped_per_batch_and_overall(monkeypatch):
+    many = [f"tool{i}.ai" for i in range(service.MAX_NEW_TOOLS_PER_BATCH + 2)]
+    added = _discovery_harness(monkeypatch, {})
+    summary = service.ingest_telemetry(None, _events(*many))  # type: ignore[arg-type]
+    assert len(added) == service.MAX_NEW_TOOLS_PER_BATCH
+    assert summary["unmatched_domains"] == 2
+
+    added = _discovery_harness(monkeypatch, {}, already_discovered=service.MAX_AUTO_DISCOVERED_TOOLS - 1)
+    summary = service.ingest_telemetry(None, _events("one.ai", "two.ai"))  # type: ignore[arg-type]
+    assert added == ["one.ai"]
+    assert summary["auto_discovered_apps"] == 1 and summary["unmatched_domains"] == 1
 
 
 # --------------------------------------------------------------------------- schema & migration parity
@@ -323,24 +391,68 @@ def test_migrations_004_and_005_match_schema():
 # --------------------------------------------------------------------------- optional live Postgres checks
 
 
-@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="TEST_DATABASE_URL not set")
-def test_postgres_audit_immutability_and_lifecycle_roundtrip():
-    db_url = os.environ["TEST_DATABASE_URL"]
-    schema_sql = (ROOT / "database" / "schema.sql").read_text(encoding="utf-8")
-    with psycopg.connect(db_url, row_factory=dict_row) as conn:
-        conn.execute(schema_sql)
-        conn.execute("INSERT INTO departments (name, data_class, sensitivity) VALUES ('Engineering', 'source_code', 3)")
+def test_postgres_audit_immutability_and_lifecycle_roundtrip(seeded_db):
+    """On a real Postgres: the chain verifies, the triggers refuse edits, and a block moves through
+    approved -> executed -> verified only in that order. Skips without TEST_DATABASE_URL (seeded_db)."""
+    # Autocommit: each statement is its own transaction, so a refused one leaves the rest in place.
+    # (The old version ran everything in one transaction, so its first rollback dropped the schema too.)
+    with psycopg.connect(seeded_db, row_factory=dict_row, autocommit=True) as conn:
         service.repo.audit(conn, "admin", "abcdef123456", "test.one", "target:1", {"k": "v"})
         service.repo.audit(conn, "admin", "abcdef123456", "test.two", "target:2", {"n": 2})
 
         res = service.verify_audit(conn)
         assert res["intact"] is True
         assert res["checked"] == 2
+        assert res["legacy_unhashed"] == 0
 
-        with pytest.raises(psycopg.Error, match="append-only"):
-            conn.execute("UPDATE audit_log SET action = 'forged' WHERE id = 1")
-        conn.rollback()
+        for forbidden in ("UPDATE audit_log SET action = 'forged' WHERE id = 1",
+                          "DELETE FROM audit_log",
+                          "TRUNCATE audit_log"):
+            with pytest.raises(psycopg.Error, match="append-only"):
+                conn.execute(forbidden)
+        assert service.verify_audit(conn) == res  # nothing was changed or removed
 
-        with pytest.raises(psycopg.Error, match="append-only"):
-            conn.execute("DELETE FROM audit_log")
-        conn.rollback()
+        # The block lifecycle, on a pending proposal from the seed.
+        block = conn.execute(
+            "SELECT id FROM remediation_actions WHERE action_type = 'block_domain' AND status = 'pending_approval' "
+            "ORDER BY id LIMIT 1"
+        ).fetchone()["id"]
+        with pytest.raises(service.Conflict):
+            service.advance_remediation(conn, block, "execute", "admin:test0001", "")  # not approved yet
+        assert service.decide_remediation(conn, block, "approve", "admin:test0001", "agreed")["status"] == "approved"
+        with pytest.raises(service.Conflict):
+            service.advance_remediation(conn, block, "verify", "admin:test0001", "")  # not applied yet
+
+        applied = service.advance_remediation(conn, block, "execute", "admin:test0001", "rule added on the campus proxy")
+        assert applied["status"] == "executed" and applied["executed_by"] == "admin:test0001"
+        verified = service.advance_remediation(conn, block, "verify", "admin:test0002", "")
+        assert verified["status"] == "verified" and verified["verified_by"] == "admin:test0002"
+        with pytest.raises(service.Conflict):
+            service.advance_remediation(conn, block, "verify", "admin:test0002", "")  # already verified
+
+        # Only domain blocks have this lifecycle.
+        nudge = conn.execute("SELECT id FROM remediation_actions WHERE action_type = 'nudge' LIMIT 1").fetchone()["id"]
+        with pytest.raises(service.Conflict):
+            service.advance_remediation(conn, nudge, "execute", "admin:test0001", "")
+
+
+def test_postgres_discovered_tool_never_borrows_a_catalogued_vendor(seeded_db):
+    """A discovered domain whose name matches a reviewed vendor still gets its own unread, unverified vendor."""
+    with psycopg.connect(seeded_db, row_factory=dict_row, autocommit=True) as conn:
+        real = conn.execute("SELECT id, name, posture_score FROM vendors ORDER BY posture_score LIMIT 1").fetchone()
+        assert service.repo.count_discovered_apps(conn) == 0
+
+        app_id, created = service.repo.upsert_discovered_app(conn, "lookalike.ai", "Lookalike AI", real["name"],
+                                                             service.UNREAD_POSTURE)
+        assert created
+        row = conn.execute(
+            "SELECT v.id, v.name, v.posture_score, v.verification_status FROM saas_apps a "
+            "JOIN vendors v ON v.id = a.vendor_id WHERE a.id = %s", (app_id,)
+        ).fetchone()
+        assert row["id"] != real["id"] and row["name"] == f"{real['name']} (lookalike.ai)"
+        assert row["posture_score"] == service.UNREAD_POSTURE and row["verification_status"] == "unverified"
+
+        # The same domain again is the same tool, not a second one.
+        assert service.repo.upsert_discovered_app(conn, "lookalike.ai", "Lookalike AI", real["name"],
+                                                  service.UNREAD_POSTURE) == (app_id, False)
+        assert service.repo.count_discovered_apps(conn) == 1
